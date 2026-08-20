@@ -218,12 +218,12 @@ class TestConservation(unittest.TestCase):
         for i in range(len(geoms)):
             for j in range(i + 1, len(geoms)):
                 overlap = geoms[i].intersection(geoms[j])
-                self.assertLess(overlap.area(), 1e-9,
+                self.assertLess(overlap.area(), polygon.area() * 1e-9,
                                 f"pieces {i} and {j} overlap")
 
         union = QgsGeometry.unaryUnion(geoms)
         leftover = union.symDifference(polygon)
-        self.assertLess(leftover.area(), 1e-6)
+        self.assertLess(leftover.area(), polygon.area() * 1e-6)
 
 
 class TestRegressions(unittest.TestCase):
