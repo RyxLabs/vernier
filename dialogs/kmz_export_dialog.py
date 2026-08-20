@@ -61,7 +61,7 @@ class KmzExportDialog(BaseDialog):
         add_form = QFormLayout()
 
         self.layer_combo = QgsMapLayerComboBox()
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
         self.layer_combo.layerChanged.connect(self._on_layer_changed)
         add_form.addRow(self.tr("Layer:"), self.layer_combo)
 
@@ -308,7 +308,7 @@ class KmzExportDialog(BaseDialog):
 
         self.log_message(
             f"KMZ export: {total_features} features, "
-            f"{len(selection)} layers -> {output_path}", Qgis.Info)
+            f"{len(selection)} layers -> {output_path}", Qgis.MessageLevel.Info)
         self.show_export_done(
             self.tr("Saved {0}\n{1} features from {2} layers.").format(
                 output_path, total_features, len(selection)),

@@ -92,7 +92,8 @@ def _run_hidden(cmd, timeout):
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 0  # SW_HIDE
         kwargs["startupinfo"] = si
-    return subprocess.run(cmd, **kwargs)
+    # nosec B603 - cmd is an argv list with no shell. the ogr2ogr and converter paths come from services.deps and the drawing path from the user's file dialog, but argv elements reach the process untouched, so there is nothing to inject into
+    return subprocess.run(cmd, **kwargs)  # nosec B603
 
 
 def _silent_remove(path):
@@ -122,7 +123,7 @@ def convert_dwg_to_dxf(dwg_path, oda_exe):
         shutil.rmtree(out_dir, ignore_errors=True)
         QgsMessageLog.logMessage(
             f"ODA conversion timed out after {ODA_TIMEOUT}s",
-            PLUGIN_NAME, Qgis.Critical)
+            PLUGIN_NAME, Qgis.MessageLevel.Critical)
         return None, _tr(
             "The DWG conversion timed out after {0} seconds - the "
             "drawing may be too large, or ODA File Converter is waiting "
@@ -130,7 +131,7 @@ def convert_dwg_to_dxf(dwg_path, oda_exe):
     except Exception as e:
         shutil.rmtree(out_dir, ignore_errors=True)
         QgsMessageLog.logMessage(
-            f"ODA conversion failed: {e}", PLUGIN_NAME, Qgis.Critical)
+            f"ODA conversion failed: {e}", PLUGIN_NAME, Qgis.MessageLevel.Critical)
         return None, _tr(
             "ODA File Converter could not be started: {0}").format(e)
 
@@ -147,7 +148,7 @@ def convert_dwg_to_dxf(dwg_path, oda_exe):
     QgsMessageLog.logMessage(
         f"ODA exit code {result.returncode}, no DXF written. stderr: "
         f"{(result.stderr or '').strip()[:500]}",
-        PLUGIN_NAME, Qgis.Critical)
+        PLUGIN_NAME, Qgis.MessageLevel.Critical)
     return None, _tr(
         "ODA File Converter wrote no DXF (exit code {0}). Check Log "
         "Messages > Vernier for its output.").format(result.returncode)
@@ -166,7 +167,7 @@ class DXFImportTask(QgsTask):
                  skip_keywords, ogr2ogr_path, oda_path, finished_cb):
         super().__init__(
             f"Import DXF: {os.path.basename(dxf_path)}",
-            QgsTask.CanCancel,
+            QgsTask.Flag.CanCancel,
         )
         self.dxf_path = dxf_path
         self.output_path = output_path
@@ -181,7 +182,7 @@ class DXFImportTask(QgsTask):
         self._dwg_tmp_dir = None
         self._tmp_out = None
 
-    def _log(self, msg, level=Qgis.Info):
+    def _log(self, msg, level=Qgis.MessageLevel.Info):
         QgsMessageLog.logMessage(msg, PLUGIN_NAME, level)
 
     def run(self):
@@ -190,7 +191,7 @@ class DXFImportTask(QgsTask):
         except Exception as e:
             import traceback
             # traceback goes to the log, the dialog gets the one-line reason and a pointer at the log
-            self._log(f"{e}\n{traceback.format_exc()}", Qgis.Critical)
+            self._log(f"{e}\n{traceback.format_exc()}", Qgis.MessageLevel.Critical)
             self.error_msg = str(e) or e.__class__.__name__
             return False
         finally:
@@ -265,7 +266,7 @@ class DXFImportTask(QgsTask):
         if result.returncode != 0:
             self._log(
                 f"ogr2ogr exit code {result.returncode}:\n"
-                f"{(result.stderr or '').strip()}", Qgis.Critical)
+                f"{(result.stderr or '').strip()}", Qgis.MessageLevel.Critical)
             self.error_msg = _tr(
                 "ogr2ogr could not convert the drawing (exit code {0}). "
                 "Check Log Messages > Vernier for its output.").format(
@@ -284,7 +285,7 @@ class DXFImportTask(QgsTask):
             os.replace(tmp_out, self.output_path)
         except OSError as e:
             self._log(f"Could not replace {self.output_path}: {e}",
-                      Qgis.Critical)
+                      Qgis.MessageLevel.Critical)
             self.error_msg = _tr(
                 "Could not write {0} - the file is in use. Remove its "
                 "layers from the project, then retry.").format(
@@ -305,14 +306,14 @@ class DXFImportTask(QgsTask):
             ezdxf = None
             self._log(
                 "ezdxf not installed - skipping style extraction. "
-                "Layers will use default colors.", Qgis.Warning)
+                "Layers will use default colors.", Qgis.MessageLevel.Warning)
         if ezdxf is not None:
             try:
                 doc = ezdxf.readfile(actual_path)
                 layer_styles = read_layer_styles(doc)
                 del doc
             except Exception as e:
-                self._log(f"ezdxf style read failed: {e}", Qgis.Warning)
+                self._log(f"ezdxf style read failed: {e}", Qgis.MessageLevel.Warning)
 
         # ogr2ogr and ezdxf are both done with the DWG temp dir now
         if self._dwg_tmp_dir and os.path.isdir(self._dwg_tmp_dir):
@@ -356,7 +357,7 @@ class DXFImportTask(QgsTask):
                     conn.commit()
                 except Exception as e:
                     self._log(
-                        f"Index creation failed on {tbl}: {e}", Qgis.Warning)
+                        f"Index creation failed on {tbl}: {e}", Qgis.MessageLevel.Warning)
 
                 # count per CAD layer and geometry class plus how many of those rows carry text. a table written without the two columns collapses to one line layer
                 geom_sel = f"[{GEOM_FIELD}]" if GEOM_FIELD in cols else "''"

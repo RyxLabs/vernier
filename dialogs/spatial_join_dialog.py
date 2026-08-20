@@ -22,9 +22,9 @@ from ..services import join_service
 from .base_dialog import BaseDialog
 
 _GEOM_MARKS = {
-    QgsWkbTypes.PointGeometry: "● ",
-    QgsWkbTypes.LineGeometry: "╌ ",
-    QgsWkbTypes.PolygonGeometry: "▣ ",
+    QgsWkbTypes.GeometryType.PointGeometry: "● ",
+    QgsWkbTypes.GeometryType.LineGeometry: "╌ ",
+    QgsWkbTypes.GeometryType.PolygonGeometry: "▣ ",
 }
 
 # combo index -> separator between concatenated values
@@ -47,7 +47,7 @@ class SpatialJoinDialog(BaseDialog):
 
         group, self.target_combo, self.selected_only = \
             self.create_layer_group(self.tr("Target layer (polygons)"),
-                                    QgsMapLayerProxyModel.PolygonLayer)
+                                    QgsMapLayerProxyModel.Filter.PolygonLayer)
         layout.addWidget(group)
 
         sources_group = QGroupBox(self.tr("Source layers"))
@@ -401,7 +401,7 @@ class SpatialJoinDialog(BaseDialog):
             feats = {}
             fixed = 0
             is_polygon = (source.geometryType()
-                          == QgsWkbTypes.PolygonGeometry)
+                          == QgsWkbTypes.GeometryType.PolygonGeometry)
             transform = None
             source_crs = source.crs()
             if (source_crs.isValid() and target_crs.isValid()
@@ -504,8 +504,8 @@ class SpatialJoinDialog(BaseDialog):
                             if geometry.intersects(candidate.geometry()):
                                 matched.append(
                                     (source.id(), source.name(), candidate))
-                        except Exception:
-                            pass  # still-invalid geometry
+                        except Exception:  # nosec B110
+                            pass  # still-invalid geometry - GEOS raises per candidate, and one bad feature must not abort the join
 
             if not matched:
                 stats["no_match"] += 1

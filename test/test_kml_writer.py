@@ -51,7 +51,7 @@ class TestGeometryToKml(unittest.TestCase):
         geom = QgsGeometry.fromWkt(
             "POLYGON((0 0, 4 0, 4 4, 0 4, 0 0),"
             "(1 1, 2 1, 2 2, 1 2, 1 1))")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.PolygonGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.PolygonGeometry)
         self.assertEqual(kml.count("<outerBoundaryIs>"), 1)
         self.assertEqual(kml.count("<innerBoundaryIs>"), 1)
         self.assertIn("4.00000000,4.00000000,0", kml)
@@ -64,25 +64,25 @@ class TestGeometryToKml(unittest.TestCase):
         geom = QgsGeometry.fromWkt(
             "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)),"
             "((5 5, 6 5, 6 6, 5 6, 5 5)))")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.PolygonGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.PolygonGeometry)
         self.assertEqual(kml.count("<Polygon>"), 2)
         self.assertIn("<MultiGeometry>", kml)
 
     def test_multipoint_exports_every_point(self):
         geom = QgsGeometry.fromWkt("MULTIPOINT((0 0), (1 1), (2 2))")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.PointGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.PointGeometry)
         self.assertEqual(kml.count("<Point>"), 3)
         self.assertIn("2.00000000,2.00000000,0", kml)
 
     def test_single_point(self):
         geom = QgsGeometry.fromWkt("POINT(3 4)")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.PointGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.PointGeometry)
         self.assertEqual(kml.count("<Point>"), 1)
         self.assertNotIn("<MultiGeometry>", kml)
 
     def test_circular_string_is_segmentized(self):
         geom = QgsGeometry.fromWkt("CIRCULARSTRING(0 0, 1 1, 2 0)")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.LineGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.LineGeometry)
         self.assertIsNotNone(kml)
         self.assertIn("<LineString>", kml)
         # an arc segmentizes into more vertices than its 3 control points
@@ -91,13 +91,13 @@ class TestGeometryToKml(unittest.TestCase):
     def test_curve_polygon_is_segmentized(self):
         geom = QgsGeometry.fromWkt(
             "CURVEPOLYGON(CIRCULARSTRING(0 0, 2 0, 2 2, 0 2, 0 0))")
-        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.PolygonGeometry)
+        kml = kml_writer.geometry_to_kml(geom, QgsWkbTypes.GeometryType.PolygonGeometry)
         self.assertIsNotNone(kml)
         self.assertIn("<Polygon>", kml)
 
     def test_empty_geometry_returns_none(self):
         self.assertIsNone(kml_writer.geometry_to_kml(
-            QgsGeometry(), QgsWkbTypes.PolygonGeometry))
+            QgsGeometry(), QgsWkbTypes.GeometryType.PolygonGeometry))
 
 
 class TestBuildLabel(unittest.TestCase):

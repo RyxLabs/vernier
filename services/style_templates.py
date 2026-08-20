@@ -45,8 +45,8 @@ _MARKER_SHAPE_ENUMS = {
 }
 
 _SIZE_UNIT_ENUMS = {
-    "points": QgsUnitTypes.RenderPoints,
-    "mm": QgsUnitTypes.RenderMillimeters,
+    "points": QgsUnitTypes.RenderUnit.RenderPoints,
+    "mm": QgsUnitTypes.RenderUnit.RenderMillimeters,
 }
 
 
@@ -370,20 +370,20 @@ def build_symbol(template: dict, geometry_type):
     pen = line.get("pen_style", "solid")
     marker_cfg = template.get("vertex_marker") or {}
 
-    if geometry_type == QgsWkbTypes.PolygonGeometry:
+    if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
         symbol = QgsFillSymbol.createSimple({
             "color": "0,0,0,0",
             "outline_color": color_str,
             "outline_width": str(width),
             "outline_style": pen,
         })
-    elif geometry_type == QgsWkbTypes.LineGeometry:
+    elif geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
         symbol = QgsLineSymbol.createSimple({
             "color": color_str,
             "width": str(width),
             "line_style": pen,
         })
-    elif geometry_type == QgsWkbTypes.PointGeometry:
+    elif geometry_type == QgsWkbTypes.GeometryType.PointGeometry:
         shape = _MARKER_SHAPE_ENUMS.get(
             marker_cfg.get("shape", "circle"), Qgis.MarkerShape.Circle)
         point_color = (_color(marker_cfg["color"])
@@ -428,7 +428,7 @@ def _apply_labels(template: dict, layer, binding):
         buf = QgsTextBufferSettings()
         buf.setEnabled(True)
         buf.setSize(float(buffer_cfg.get("size", 0.8)))
-        buf.setSizeUnit(QgsUnitTypes.RenderMillimeters)
+        buf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         buf.setColor(_color(buffer_cfg.get("color"), (255, 255, 255)))
         text_format.setBuffer(buf)
 

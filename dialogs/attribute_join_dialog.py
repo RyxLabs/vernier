@@ -80,7 +80,7 @@ class AttributeJoinDialog(BaseDialog):
             self.tr("Target layer (where the values go)"))
         target_form = QFormLayout()
         self.target_combo = QgsMapLayerComboBox()
-        self.target_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.target_combo.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
         self.target_combo.layerChanged.connect(self._update_target_fields)
         target_form.addRow(self.tr("Target layer:"), self.target_combo)
         self.target_key_combo = QComboBox()
@@ -485,7 +485,7 @@ class AttributeJoinDialog(BaseDialog):
 
     def _build_scratch_layer(self, target, target_key, sources, source_data,
                              columns_by_source):
-        has_geometry = target.geometryType() != QgsWkbTypes.NullGeometry
+        has_geometry = target.geometryType() != QgsWkbTypes.GeometryType.NullGeometry
         if has_geometry:
             uri = QgsWkbTypes.displayString(target.wkbType())
         else:

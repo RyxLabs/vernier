@@ -246,9 +246,9 @@ class DxfExportDialog(BaseDialog):
 
             # name gets a geometry glyph in front
             geom_icons = {
-                QgsWkbTypes.PointGeometry: "●",
-                QgsWkbTypes.LineGeometry: "╌",
-                QgsWkbTypes.PolygonGeometry: "▣",
+                QgsWkbTypes.GeometryType.PointGeometry: "●",
+                QgsWkbTypes.GeometryType.LineGeometry: "╌",
+                QgsWkbTypes.GeometryType.PolygonGeometry: "▣",
             }
             icon = geom_icons.get(layer.geometryType(), "◆")
             self.table.setItem(

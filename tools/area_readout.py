@@ -197,7 +197,7 @@ class AreaReadout(QObject):
             return ""
         try:
             count = layer.selectedFeatureCount()
-            if (layer.geometryType() != QgsWkbTypes.PolygonGeometry
+            if (layer.geometryType() != QgsWkbTypes.GeometryType.PolygonGeometry
                     or count == 0):
                 return ""
             # geometries only - this runs on every vertex edit while the selection lives and we never read attributes
@@ -221,7 +221,7 @@ class AreaReadout(QObject):
                 total += calc.measureArea(geom)
             # measureArea() units follow the CRS and ellipsoid, normalize to m²
             sqm = calc.convertAreaMeasurement(
-                total, QgsUnitTypes.AreaSquareMeters)
+                total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
         except QgsCsException:
             return ""
 

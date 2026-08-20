@@ -133,7 +133,7 @@ class BaseDialog(QDialog):
     def show_export_done(self, summary: str, file_path: Optional[str] = None):
         _ui_helpers.show_export_done(self, summary, file_path)
 
-    def log_message(self, message: str, level=Qgis.Info):
+    def log_message(self, message: str, level=Qgis.MessageLevel.Info):
         _ui_helpers.log_message(message, level)
 
     # --- result messages ---
@@ -220,7 +220,7 @@ class BaseDialog(QDialog):
         return False
 
     def create_layer_group(self, label_text,
-                           filter_type=QgsMapLayerProxyModel.VectorLayer,
+                           filter_type=QgsMapLayerProxyModel.Filter.VectorLayer,
                            select_active=True):
         """QGroupBox with a layer combo and a "selected features only" box, returns (group, combo, checkbox). Pass select_active=False for the second combo of a two-layer op."""
         group = QGroupBox(label_text)

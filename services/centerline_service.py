@@ -811,7 +811,7 @@ def extract_centerlines(
     if layer is None:
         return (None, 0, 0, 0)
 
-    if layer.geometryType() != QgsWkbTypes.PolygonGeometry:
+    if layer.geometryType() != QgsWkbTypes.GeometryType.PolygonGeometry:
         _log("extract_centerlines: layer is not polygon type")
         return (None, 0, 0, 0)
 
@@ -862,7 +862,7 @@ class CenterlineTask(QgsTask):
                  output_name="Centerline",
                  selected_only=False,
                  finished_cb=None):
-        super().__init__(f"Centerline: {layer.name()}", QgsTask.CanCancel)
+        super().__init__(f"Centerline: {layer.name()}", QgsTask.Flag.CanCancel)
         # QgsVectorLayerFeatureSource exists for exactly this - a snapshot of the layer's data taken on the main thread that a worker can then iterate safely
         self._source = QgsVectorLayerFeatureSource(layer)
         self._fids = (list(layer.selectedFeatureIds()) if selected_only

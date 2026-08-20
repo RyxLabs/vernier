@@ -19,7 +19,7 @@ from ..i18n import tr as _tr
 PLUGIN_NAME = "Vernier"
 
 
-def log_message(message: str, level=Qgis.Info, plugin_name: str = PLUGIN_NAME):
+def log_message(message: str, level=Qgis.MessageLevel.Info, plugin_name: str = PLUGIN_NAME):
     QgsMessageLog.logMessage(message, plugin_name, level=level)
 
 
@@ -27,21 +27,21 @@ def show_error(parent: QWidget, title: str, message: str, *,
                log: bool = True, plugin_name: str = PLUGIN_NAME):
     QMessageBox.critical(parent, title, message)
     if log:
-        log_message(message, Qgis.Critical, plugin_name)
+        log_message(message, Qgis.MessageLevel.Critical, plugin_name)
 
 
 def show_warning(parent: QWidget, title: str, message: str, *,
                  log: bool = True, plugin_name: str = PLUGIN_NAME):
     QMessageBox.warning(parent, title, message)
     if log:
-        log_message(message, Qgis.Warning, plugin_name)
+        log_message(message, Qgis.MessageLevel.Warning, plugin_name)
 
 
 def show_info(parent: QWidget, title: str, message: str, *,
               log: bool = False, plugin_name: str = PLUGIN_NAME):
     QMessageBox.information(parent, title, message)
     if log:
-        log_message(message, Qgis.Info, plugin_name)
+        log_message(message, Qgis.MessageLevel.Info, plugin_name)
 
 
 # long enough to reach the "More" button, still short enough that repeated runs of an iterative tool do not stack bars down the canvas
@@ -57,20 +57,20 @@ def show_success(message: str, *, iface=None, duration: int = 5,
         return
     bar = iface.messageBar()
     if details:
-        bar.pushMessage(_tr("Success"), message, details, Qgis.Success,
+        bar.pushMessage(_tr("Success"), message, details, Qgis.MessageLevel.Success,
                         DETAILED_SUCCESS_DURATION)
     else:
-        bar.pushMessage(_tr("Success"), message, level=Qgis.Success,
+        bar.pushMessage(_tr("Success"), message, level=Qgis.MessageLevel.Success,
                         duration=duration)
 
 
 def show_notice(message: str, *, iface=None, duration: int = 5,
                 plugin_name: str = PLUGIN_NAME):
     """Neutral message bar for something that is neither a result nor a problem - a run the user canceled, mostly."""
-    log_message(message, Qgis.Info, plugin_name)
+    log_message(message, Qgis.MessageLevel.Info, plugin_name)
     if iface:
         iface.messageBar().pushMessage(
-            plugin_name, message, level=Qgis.Info, duration=duration)
+            plugin_name, message, level=Qgis.MessageLevel.Info, duration=duration)
 
 
 def features_phrase(count: int) -> str:

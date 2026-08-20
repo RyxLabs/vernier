@@ -47,7 +47,7 @@ SPECS = {
 }
 
 
-def _log(message: str, level=Qgis.Info):
+def _log(message: str, level=Qgis.MessageLevel.Info):
     QgsMessageLog.logMessage(message, PLUGIN_NAME, level=level)
 
 
@@ -127,7 +127,8 @@ def _run_pip(args, timeout=180):
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 0  # SW_HIDE
         kwargs["startupinfo"] = si
-    return subprocess.run(args, **kwargs)
+    # nosec B603 - args is an argv list with no shell, built from this module's own pip invocation plus package specs from the SPECS table above. nothing the user types reaches it
+    return subprocess.run(args, **kwargs)  # nosec B603
 
 
 def _pip_install(python_exe, pip_name, no_deps, companions):
@@ -148,7 +149,7 @@ def _pip_install(python_exe, pip_name, no_deps, companions):
         err = (r.stderr or r.stdout or "").strip()
     except Exception as e:
         err = str(e)
-    _log(f"pip --target install failed: {err[:200]}", Qgis.Warning)
+    _log(f"pip --target install failed: {err[:200]}", Qgis.MessageLevel.Warning)
     return False, err
 
 
@@ -184,7 +185,7 @@ def ensure(module: str, parent=None) -> bool:
     python_exe = find_python()
     if python_exe is None:
         _log("no QGIS python interpreter found for pip install",
-             Qgis.Warning)
+             Qgis.MessageLevel.Warning)
         ok = False
         err = _tr("The Python interpreter of this QGIS install was not "
                   "found.")

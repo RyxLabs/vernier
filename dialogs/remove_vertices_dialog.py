@@ -38,8 +38,8 @@ class RemoveVerticesDialog(BaseDialog):
 
         group, self.layer_combo, self.selected_only = self.create_layer_group(
             self.tr("Input layer"),
-            filter_type=(QgsMapLayerProxyModel.PolygonLayer
-                         | QgsMapLayerProxyModel.LineLayer))
+            filter_type=(QgsMapLayerProxyModel.Filter.PolygonLayer
+                         | QgsMapLayerProxyModel.Filter.LineLayer))
         self.selected_only.setToolTip(self.tr(
             "Clean only the selected features; the rest are copied unchanged"))
         layout.addWidget(group)
@@ -270,7 +270,7 @@ class RemoveVerticesDialog(BaseDialog):
             marker.setCenter(center)
             # amber, same accent as the warnings here and not what QGIS uses for its own editing markers
             marker.setColor(QColor("#d9822b"))
-            marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+            marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
             marker.setIconSize(8)
             marker.setPenWidth(2)
             self._markers.append(marker)

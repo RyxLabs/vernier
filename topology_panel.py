@@ -168,12 +168,12 @@ class TopologyPanel(QDockWidget):
 
         canvas = iface.mapCanvas()
         # conflict band matches the overlap layer's crimson, the features involved get a muted slate so they read as context rather than error
-        self._rb_conflict = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+        self._rb_conflict = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         self._rb_conflict.setColor(QColor(216, 17, 89, 110))
         self._rb_conflict.setWidth(3)
         self._rb_conflict.setIcon(QgsRubberBand.ICON_CIRCLE)
         self._rb_conflict.setIconSize(12)
-        self._rb_features = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+        self._rb_features = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         self._rb_features.setColor(QColor(69, 123, 157, 70))
         self._rb_features.setWidth(3)
 
@@ -186,7 +186,7 @@ class TopologyPanel(QDockWidget):
         layer_row = QHBoxLayout()
         layer_row.addWidget(QLabel(self.tr("Layer:")))
         self.layer_combo = QgsMapLayerComboBox()
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
         layer_row.addWidget(self.layer_combo, 1)
         layout.addLayout(layer_row)
 
@@ -339,7 +339,7 @@ class TopologyPanel(QDockWidget):
         layer = self.layer_combo.currentLayer()
         is_polygon = (isinstance(layer, QgsVectorLayer)
                       and layer.geometryType()
-                      == QgsWkbTypes.PolygonGeometry)
+                      == QgsWkbTypes.GeometryType.PolygonGeometry)
         for key, _label, polygon_only in _CHECKS:
             if polygon_only:
                 box = self.check_boxes[key]
@@ -365,7 +365,7 @@ class TopologyPanel(QDockWidget):
     # --- running ---
 
     def _active_checks(self, layer):
-        is_polygon = layer.geometryType() == QgsWkbTypes.PolygonGeometry
+        is_polygon = layer.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry
         return [(key, label) for key, label, polygon_only in _CHECKS
                 if self.check_boxes[key].isChecked()
                 and (is_polygon or not polygon_only)]
@@ -503,7 +503,7 @@ class TopologyPanel(QDockWidget):
             if band is None:
                 continue
             try:
-                band.reset(QgsWkbTypes.PolygonGeometry)
+                band.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
             except RuntimeError:
                 pass
 

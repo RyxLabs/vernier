@@ -84,12 +84,12 @@ class TestGeometryTokens(unittest.TestCase):
 
     def test_each_token_keeps_its_own_geometry_class(self):
         expected = {
-            "POINT": QgsWkbTypes.PointGeometry,
-            "MULTIPOINT": QgsWkbTypes.PointGeometry,
-            "LINESTRING": QgsWkbTypes.LineGeometry,
-            "MULTILINESTRING": QgsWkbTypes.LineGeometry,
-            "POLYGON": QgsWkbTypes.PolygonGeometry,
-            "MULTIPOLYGON": QgsWkbTypes.PolygonGeometry,
+            "POINT": QgsWkbTypes.GeometryType.PointGeometry,
+            "MULTIPOINT": QgsWkbTypes.GeometryType.PointGeometry,
+            "LINESTRING": QgsWkbTypes.GeometryType.LineGeometry,
+            "MULTILINESTRING": QgsWkbTypes.GeometryType.LineGeometry,
+            "POLYGON": QgsWkbTypes.GeometryType.PolygonGeometry,
+            "MULTIPOLYGON": QgsWkbTypes.GeometryType.PolygonGeometry,
         }
         for ogr_name, (_qml, token) in _GEOM_CLASSES.items():
             with self.subTest(ogr_name):
@@ -108,8 +108,8 @@ class TestGeometryTokens(unittest.TestCase):
         _, _, token = geom_style("LINESTRING", 1, 0)
         plain = _layer("", "\"Layer\" = 'PLAN'")
         filtered = _layer(token, "\"Layer\" = 'PLAN'")
-        self.assertEqual(plain.geometryType(), QgsWkbTypes.PointGeometry)
-        self.assertEqual(filtered.geometryType(), QgsWkbTypes.LineGeometry)
+        self.assertEqual(plain.geometryType(), QgsWkbTypes.GeometryType.PointGeometry)
+        self.assertEqual(filtered.geometryType(), QgsWkbTypes.GeometryType.LineGeometry)
         self.assertEqual(filtered.featureCount(), 1)
 
     def test_an_unlisted_class_asks_for_no_filter(self):

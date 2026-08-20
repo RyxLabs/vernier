@@ -72,9 +72,9 @@ _PLACEMENT_BY_ENUM = {
     enum: name for name, enum in style_templates.PLACEMENT_ENUMS.items()}
 
 _GEOMETRY_HINTS = {
-    QgsWkbTypes.PolygonGeometry: "polygon",
-    QgsWkbTypes.LineGeometry: "line",
-    QgsWkbTypes.PointGeometry: "point",
+    QgsWkbTypes.GeometryType.PolygonGeometry: "polygon",
+    QgsWkbTypes.GeometryType.LineGeometry: "line",
+    QgsWkbTypes.GeometryType.PointGeometry: "point",
 }
 
 _RENDERER_NAMES = {
@@ -154,9 +154,9 @@ class StyleDialog(BaseDialog):
         layer_group = QGroupBox(self.tr("Layer"))
         layer_layout = QVBoxLayout()
         self.layer_combo = QgsMapLayerComboBox()
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.PointLayer
-                                    | QgsMapLayerProxyModel.LineLayer
-                                    | QgsMapLayerProxyModel.PolygonLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.PointLayer
+                                    | QgsMapLayerProxyModel.Filter.LineLayer
+                                    | QgsMapLayerProxyModel.Filter.PolygonLayer)
         layer_layout.addWidget(self.layer_combo)
         layer_group.setLayout(layer_layout)
         layout.addWidget(layer_group)
@@ -576,9 +576,9 @@ class StyleDialog(BaseDialog):
     def _placement_options(self, layer):
         if isinstance(layer, QgsVectorLayer):
             geometry_type = layer.geometryType()
-            if geometry_type == QgsWkbTypes.LineGeometry:
+            if geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
                 return _LINE_PLACEMENTS
-            if geometry_type == QgsWkbTypes.PointGeometry:
+            if geometry_type == QgsWkbTypes.GeometryType.PointGeometry:
                 return _POINT_PLACEMENTS
         return _POLYGON_PLACEMENTS
 
@@ -633,13 +633,13 @@ class StyleDialog(BaseDialog):
         if sym_layer is None:
             return
         try:
-            if geometry_type == QgsWkbTypes.PolygonGeometry:
+            if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
                 color = sym_layer.strokeColor()
                 width = sym_layer.strokeWidth()
-            elif geometry_type == QgsWkbTypes.LineGeometry:
+            elif geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
                 color = sym_layer.color()
                 width = sym_layer.width()
-            elif geometry_type == QgsWkbTypes.PointGeometry:
+            elif geometry_type == QgsWkbTypes.GeometryType.PointGeometry:
                 color = sym_layer.color()
                 width = sym_layer.size()
             else:
@@ -658,9 +658,9 @@ class StyleDialog(BaseDialog):
     @staticmethod
     def _detect_pen_style(sym_layer, geometry_type):
         try:
-            if geometry_type == QgsWkbTypes.PolygonGeometry:
+            if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
                 return sym_layer.strokeStyle()
-            if geometry_type == QgsWkbTypes.LineGeometry:
+            if geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
                 return sym_layer.penStyle()
         except AttributeError:
             pass
@@ -706,7 +706,7 @@ class StyleDialog(BaseDialog):
         text_format = settings.format()
         size = text_format.size()
         # templates label in points, the spin box is millimeters, so convert on read-back
-        if text_format.sizeUnit() == QgsUnitTypes.RenderPoints:
+        if text_format.sizeUnit() == QgsUnitTypes.RenderUnit.RenderPoints:
             size *= 0.352778
         self.label_size_spin.setValue(size)
         self.label_color_btn.setColor(text_format.color())

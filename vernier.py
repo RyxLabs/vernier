@@ -91,7 +91,7 @@ class Vernier:
             if not callable(handler):
                 QgsMessageLog.logMessage(
                     f"Catalog entry '{feat.method}' has no implementation "
-                    "- skipped.", PLUGIN_NAME, level=Qgis.Warning)
+                    "- skipped.", PLUGIN_NAME, level=Qgis.MessageLevel.Warning)
                 continue
             icon = QIcon(os.path.join(icons_dir, feat.icon))
             action = QAction(icon, self.tr(feat.label),
@@ -448,7 +448,7 @@ class Vernier:
             self.apply_cad_mode(settings_service.get("cad_mode/enabled"))
         except Exception as e:
             QgsMessageLog.logMessage(f"CAD Mode startup failed: {e}",
-                                     PLUGIN_NAME, level=Qgis.Critical)
+                                     PLUGIN_NAME, level=Qgis.MessageLevel.Critical)
         self._sync_cad_mode_action()
         # QGIS can still restore the last project and panel layout after initializationCompleted, so these settle passes re-apply the canvas
         QTimer.singleShot(500, self._cad_startup_settle)
@@ -470,7 +470,7 @@ class Vernier:
                 self.command_bar.refresh_strip()
         except Exception as e:
             QgsMessageLog.logMessage(f"CAD Mode settle: {e}",
-                                     PLUGIN_NAME, level=Qgis.Warning)
+                                     PLUGIN_NAME, level=Qgis.MessageLevel.Warning)
 
     def _show_welcome(self):
         try:
@@ -478,7 +478,7 @@ class Vernier:
                 self.tr("Vernier"),
                 self.tr("Vernier is installed. The tools are in the Vernier "
                         "toolbar and under Vector > Vernier."),
-                level=Qgis.Info, duration=12)
+                level=Qgis.MessageLevel.Info, duration=12)
         except RuntimeError:
             pass
 

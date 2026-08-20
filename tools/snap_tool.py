@@ -70,7 +70,7 @@ def toggle() -> bool:
         config.setIntersectionSnapping(
             settings_service.get("snapping/intersection"))
         config.setTolerance(settings_service.get("snapping/tolerance_px"))
-        config.setUnits(QgsTolerance.Pixels)
+        config.setUnits(QgsTolerance.UnitType.Pixels)
         project.setTopologicalEditing(
             settings_service.get("snapping/topological_editing"))
         _replaced = (_profile_fields(config), old_fields, was_topological)

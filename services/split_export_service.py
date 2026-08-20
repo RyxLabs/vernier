@@ -69,8 +69,8 @@ def render_filename(template, value, layer_name="", field_name="",
                 if fname not in placeholders:
                     fval = sample_feature[fname]
                     placeholders[fname] = "" if fval is None else str(fval)
-        except Exception:
-            pass
+        except Exception:  # nosec B110
+            pass  # attribute placeholders are optional, the built-in ones above still render the name
 
     result = template
     for key, val in placeholders.items():
@@ -138,9 +138,9 @@ def build_split_layer(source, field, value, selected_only=False,
         return None
 
     geom_map = {
-        QgsWkbTypes.PointGeometry: "Point",
-        QgsWkbTypes.LineGeometry: "LineString",
-        QgsWkbTypes.PolygonGeometry: "Polygon",
+        QgsWkbTypes.GeometryType.PointGeometry: "Point",
+        QgsWkbTypes.GeometryType.LineGeometry: "LineString",
+        QgsWkbTypes.GeometryType.PolygonGeometry: "Polygon",
     }
     base_geom = geom_map.get(source.geometryType(), "Polygon")
     # match multipart-ness or the writers downcast
@@ -281,7 +281,7 @@ def export_split_groups(layers_config, group_field, values, output_dir,
         except Exception as e:
             QgsMessageLog.logMessage(
                 f"Split DXF - group {value}: {e}", PLUGIN_NAME,
-                Qgis.Warning)
+                Qgis.MessageLevel.Warning)
             group_ok, group_skip, group_err = 0, 0, 1
             group_msgs.append(f"DXF: {e}")
 

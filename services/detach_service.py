@@ -64,11 +64,11 @@ def _polygonal(geometry: QgsGeometry) -> QgsGeometry:
     if geometry is None or geometry.isNull() or geometry.isEmpty():
         return QgsGeometry()
     if (QgsWkbTypes.geometryType(geometry.wkbType())
-            == QgsWkbTypes.PolygonGeometry):
+            == QgsWkbTypes.GeometryType.PolygonGeometry):
         return geometry
     parts = [part for part in geometry.asGeometryCollection()
              if (QgsWkbTypes.geometryType(part.wkbType())
-                 == QgsWkbTypes.PolygonGeometry)]
+                 == QgsWkbTypes.GeometryType.PolygonGeometry)]
     if not parts:
         return QgsGeometry()
     if len(parts) == 1:
@@ -230,7 +230,7 @@ def detach_by_areas(polygon: QgsGeometry, direction, targets: Sequence[float],
         raise DetachError(_tr(
             "No polygon to detach from - the input geometry is empty."))
     if (QgsWkbTypes.geometryType(polygon.wkbType())
-            != QgsWkbTypes.PolygonGeometry):
+            != QgsWkbTypes.GeometryType.PolygonGeometry):
         raise DetachError(_tr("The input geometry must be a polygon."))
     u, n = _unit_and_normal(direction)
     if not targets:

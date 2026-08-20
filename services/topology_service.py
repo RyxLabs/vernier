@@ -61,7 +61,7 @@ def _per_feature_progress(progress: ProgressCallback, layer: QgsVectorLayer):
 
 def _geos_complaint(geometry: QgsGeometry) -> Optional[str]:
     """First GEOS complaint, None when the geometry is fine."""
-    findings = geometry.validateGeometry(QgsGeometry.ValidatorGeos)
+    findings = geometry.validateGeometry(QgsGeometry.ValidationMethod.ValidatorGeos)
     if not findings:
         return None
     return findings[0].what() or _tr("invalid geometry")
@@ -191,7 +191,7 @@ def check_gaps(layer: QgsVectorLayer, snap_tolerance: float = 0.005,
 
     if snap_tolerance > 0 and len(footprints) > 1:
         snapper = QgsInternalGeometrySnapper(
-            snap_tolerance, QgsGeometrySnapper.PreferNodes)
+            snap_tolerance, QgsGeometrySnapper.SnapMode.PreferNodes)
         aligned = []
         # snapping is one of the two slow phases, report per feature - on a big layer the bar keeps moving instead of sitting still long enough to read as a hang
         total = len(footprints)

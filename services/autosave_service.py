@@ -194,7 +194,7 @@ class AutosaveService:
         if not root_dir:
             msg = _tr("Autosave stopped: save the project to disk or "
                       "choose a backup folder.")
-            self._log(msg, Qgis.Warning)
+            self._log(msg, Qgis.MessageLevel.Warning)
             self._status(msg)
             self.stop()
             return False
@@ -211,7 +211,7 @@ class AutosaveService:
         except OSError as e:
             msg = _tr("Could not create the backup folder '{0}': "
                       "{1}").format(backup_dir, e)
-            self._log(msg, Qgis.Critical)
+            self._log(msg, Qgis.MessageLevel.Critical)
             self._push_warning(_tr("Autosave stopped"), msg, critical=True)
             self.stop()
             return False
@@ -222,7 +222,7 @@ class AutosaveService:
         except OSError as e:
             msg = _tr("Could not create a temporary folder for the "
                       "backup: {0}").format(e)
-            self._log(msg, Qgis.Critical)
+            self._log(msg, Qgis.MessageLevel.Critical)
             self._push_warning(_tr("Backup failed"), msg, critical=True)
             return False
 
@@ -252,7 +252,7 @@ class AutosaveService:
                     project_error = _tr("the file could not be written, "
                                         "or was written empty")
                     self._log("QgsProject.write() failed or produced an "
-                              f"empty file: {temp_path}", Qgis.Critical)
+                              f"empty file: {temp_path}", Qgis.MessageLevel.Critical)
                     if (os.path.exists(temp_path)
                             and os.path.getsize(temp_path) == 0):
                         try:
@@ -303,7 +303,7 @@ class AutosaveService:
             if cancelled:
                 # cancel comes from cleanup() at unload and the staged files are gone, so this cycle must not count as a backup, prune retention or report "Backup OK"
                 self._log(_tr("Backup move canceled - this cycle was "
-                              "not completed."), Qgis.Warning)
+                              "not completed."), Qgis.MessageLevel.Warning)
                 return
             try:
                 self._cleanup_old_backups(backup_dir, max_backups,
@@ -329,7 +329,7 @@ class AutosaveService:
 
         if project_error:
             self._log(_tr("Project: {0}").format(project_error),
-                      Qgis.Critical)
+                      Qgis.MessageLevel.Critical)
             self._push_warning(
                 _tr("Project backup failed"),
                 _tr("The project file was not backed up: {0}. Check free "
@@ -338,7 +338,7 @@ class AutosaveService:
                 critical=True)
         elif move_errors:
             for err in move_errors:
-                self._log(err, Qgis.Critical)
+                self._log(err, Qgis.MessageLevel.Critical)
             if len(move_errors) == 1:
                 detail = _tr("1 file could not be moved to the backup "
                              "folder. Check the connection and "
@@ -351,7 +351,7 @@ class AutosaveService:
                                critical=True)
         elif layer_warnings:
             for warning in layer_warnings:
-                self._log(warning, Qgis.Warning)
+                self._log(warning, Qgis.MessageLevel.Warning)
             if len(layer_warnings) == 1:
                 detail = _tr("1 layer could not be saved. See Log "
                              "Messages > Vernier for details.")
@@ -373,7 +373,7 @@ class AutosaveService:
             else:
                 msg = _tr("Nothing to back up: save the project to disk, "
                           "or start editing a layer.")
-            self._log(msg, Qgis.Warning)
+            self._log(msg, Qgis.MessageLevel.Warning)
             self._status(msg)
 
     def _next_timestamp(self):
@@ -434,7 +434,7 @@ class AutosaveService:
             options.fileEncoding = "UTF-8"
             err, msg, _, _ = QgsVectorFileWriter.writeAsVectorFormatV3(
                 layer, dest_path, QgsCoordinateTransformContext(), options)
-            if err != QgsVectorFileWriter.NoError:
+            if err != QgsVectorFileWriter.WriterError.NoError:
                 warnings.append(f"{layer.name()}: {msg}")
                 return False
             # a full disk can hand back an empty file and no error
@@ -473,7 +473,7 @@ class AutosaveService:
     def _status(self, msg, duration=6000):
         self.iface.statusBarIface().showMessage(msg, duration)
 
-    def _log(self, msg, level=Qgis.Info):
+    def _log(self, msg, level=Qgis.MessageLevel.Info):
         QgsMessageLog.logMessage(msg, "Vernier", level=level)
 
     def _warn_untrusted_dir(self):
@@ -482,7 +482,7 @@ class AutosaveService:
                   "in '{0}'. Open Autosave Settings and save that folder "
                   "to allow writing there.").format(
                       self.get_backup_dir_pref().strip())
-        self._log(msg, Qgis.Warning)
+        self._log(msg, Qgis.MessageLevel.Warning)
         self._push_warning(_tr("Autosave not started"), msg)
 
     def _push_warning(self, title, msg, critical=False):
@@ -502,7 +502,7 @@ class _BackupMoveTask(QgsTask):
 
     def __init__(self, staged_files, temp_dir, on_done):
         super().__init__(_tr("Vernier autosave - copying backup"),
-                         QgsTask.CanCancel)
+                         QgsTask.Flag.CanCancel)
         self._staged = staged_files  # (src, dst) pairs
         self._temp_dir = temp_dir
         self._on_done = on_done
@@ -531,4 +531,4 @@ class _BackupMoveTask(QgsTask):
             # a raising callback shouldn't take the task manager with it
             QgsMessageLog.logMessage(
                 _tr("Autosave callback error: {0}").format(e),
-                "Vernier", level=Qgis.Critical)
+                "Vernier", level=Qgis.MessageLevel.Critical)

@@ -137,7 +137,7 @@ def _label_point(geom):
             if usable:
                 p = point.asPoint()
                 return p.x(), p.y(), clearance
-        except Exception:
+        except Exception:  # nosec B110
             pass  # degenerate ring, fall through to the cheap interior points
     pt = part.pointOnSurface()
     if not pt or pt.isEmpty():
@@ -241,8 +241,8 @@ def read_layer_style(layer):
                         result["stroke_color"] = (c.red(), c.green(), c.blue())
                     if hasattr(sl, "strokeWidth"):
                         result["stroke_width"] = sl.strokeWidth()
-    except Exception:
-        pass
+    except Exception:  # nosec B110
+        pass  # best-effort read of the layer's symbology, result already holds the defaults
 
     if layer.labelsEnabled():
         result["labels_enabled"] = True
@@ -258,8 +258,8 @@ def read_layer_style(layer):
                 if font_family:
                     result["label_font"] = font_family
                 result["label_field"] = ls.fieldName or None
-        except Exception:
-            pass
+        except Exception:  # nosec B110
+            pass  # best-effort read of the label settings, result already holds the defaults
 
     return result
 
@@ -273,7 +273,7 @@ def export_layers_to_dxf(layers_config, output_path, progress_callback=None):
     except ImportError:
         QgsMessageLog.logMessage(
             "ezdxf is not installed (pip install ezdxf)",
-            PLUGIN_NAME, Qgis.Critical)
+            PLUGIN_NAME, Qgis.MessageLevel.Critical)
         return (0, 0, 0)
 
     doc = ezdxf.new("R2010")
@@ -322,10 +322,10 @@ def export_layers_to_dxf(layers_config, output_path, progress_callback=None):
 
             # go by the feature's own geometry, not the layer's declared type - a mixed table would otherwise call pointN() on a point and count every row as an error
             geom_type = QgsWkbTypes.geometryType(geom.wkbType())
-            if geom_type == QgsWkbTypes.UnknownGeometry:
+            if geom_type == QgsWkbTypes.GeometryType.UnknownGeometry:
                 geom_type = layer_geom_type
-            is_polygon = geom_type == QgsWkbTypes.PolygonGeometry
-            is_line = geom_type == QgsWkbTypes.LineGeometry
+            is_polygon = geom_type == QgsWkbTypes.GeometryType.PolygonGeometry
+            is_line = geom_type == QgsWkbTypes.GeometryType.LineGeometry
 
             try:
                 _write_geometry(
@@ -354,7 +354,7 @@ def export_layers_to_dxf(layers_config, output_path, progress_callback=None):
             except Exception as e:
                 errors += 1
                 QgsMessageLog.logMessage(
-                    f"Feature {feat.id()}: {e}", PLUGIN_NAME, Qgis.Warning)
+                    f"Feature {feat.id()}: {e}", PLUGIN_NAME, Qgis.MessageLevel.Warning)
 
     _set_viewport(doc, msp)
     doc.saveas(output_path)
@@ -511,5 +511,5 @@ def _set_viewport(doc, msp):
                 max(all_x) - min(all_x),
             )
             vport[0].dxf.height = span * 1.05 if span > 0 else 1.0
-    except Exception:
-        pass
+    except Exception:  # nosec B110
+        pass  # the viewport is a convenience for whoever opens the drawing, never a reason to fail an export that already wrote its entities

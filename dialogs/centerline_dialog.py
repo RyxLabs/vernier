@@ -34,7 +34,7 @@ class CenterlineDialog(BaseDialog):
         layout = QVBoxLayout(self)
 
         group, self.layer_combo, self.selected_only = self.create_layer_group(
-            self.tr("Input layer"), QgsMapLayerProxyModel.PolygonLayer)
+            self.tr("Input layer"), QgsMapLayerProxyModel.Filter.PolygonLayer)
         layout.addWidget(group)
 
         params_group = QGroupBox(self.tr("Parameters"))

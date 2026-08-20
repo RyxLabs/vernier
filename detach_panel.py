@@ -148,7 +148,7 @@ class _DirectionMapTool(QgsMapTool):
     def __init__(self, canvas):
         super().__init__(canvas)
         self._start = None
-        self._band = QgsRubberBand(canvas, QgsWkbTypes.LineGeometry)
+        self._band = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self._band.setColor(QColor(219, 30, 42, 220))
         self._band.setWidth(2)
         self._snap_indicator = QgsSnapIndicator(canvas)
@@ -173,7 +173,7 @@ class _DirectionMapTool(QgsMapTool):
         if self._start is None:
             self._start = QgsPointXY(point)
             if self._band is not None:
-                self._band.reset(QgsWkbTypes.LineGeometry)
+                self._band.reset(QgsWkbTypes.GeometryType.LineGeometry)
                 self._band.addPoint(point)
                 self._band.addPoint(point)
             return
@@ -205,7 +205,7 @@ class _DirectionMapTool(QgsMapTool):
         self._snap_indicator.setMatch(QgsPointLocator.Match())
         if self._band is not None:
             try:
-                self._band.reset(QgsWkbTypes.LineGeometry)
+                self._band.reset(QgsWkbTypes.GeometryType.LineGeometry)
             except RuntimeError:
                 self._band = None
 
@@ -272,7 +272,7 @@ class DetachPanel(QDockWidget):
         self._tool.deactivated.connect(self._on_tool_deactivated)
 
         # the fixed direction line stays on the canvas until it's cleared
-        self._direction_band = QgsRubberBand(canvas, QgsWkbTypes.LineGeometry)
+        self._direction_band = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self._direction_band.setColor(QColor(30, 100, 220, 220))
         self._direction_band.setWidth(2)
         self._direction_band.setLineStyle(Qt.PenStyle.DashLine)
@@ -303,7 +303,7 @@ class DetachPanel(QDockWidget):
         source_layout.setContentsMargins(*_GROUP_MARGINS)
         source_layout.setSpacing(_GROUP_SPACING)
         self.layer_combo = QgsMapLayerComboBox()
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         source_layout.addWidget(self.layer_combo)
         self.source_label = QLabel()
         self.source_label.setWordWrap(True)
@@ -643,7 +643,7 @@ class DetachPanel(QDockWidget):
         self._direction_crs = (
             self.iface.mapCanvas().mapSettings().destinationCrs())
         if self._direction_band is not None:
-            self._direction_band.reset(QgsWkbTypes.LineGeometry)
+            self._direction_band.reset(QgsWkbTypes.GeometryType.LineGeometry)
             self._direction_band.addPoint(self._direction_points[0])
             self._direction_band.addPoint(self._direction_points[1])
         self._restore_map_tool()
@@ -673,7 +673,7 @@ class DetachPanel(QDockWidget):
         self._direction_points = None
         self._direction_crs = None
         if self._direction_band is not None:
-            self._direction_band.reset(QgsWkbTypes.LineGeometry)
+            self._direction_band.reset(QgsWkbTypes.GeometryType.LineGeometry)
         self._update_direction_label()
 
     def _direction_in_layer_crs(self, layer):
@@ -934,7 +934,7 @@ class DetachPanel(QDockWidget):
     def _show_preview(self, pieces, layer):
         canvas = self.iface.mapCanvas()
         for piece in pieces:
-            band = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+            band = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             # keyed on piece.index so fragments of one target share a color, remainder is always grey
             color = QColor(
                 _REMAINDER_COLOR if piece.target is None

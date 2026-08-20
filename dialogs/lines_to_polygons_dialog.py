@@ -42,7 +42,7 @@ class LinesToPolygonsDialog(BaseDialog):
         layer_group = QGroupBox(self.tr("Line layer"))
         layer_layout = QVBoxLayout()
         self.layer_combo = QgsMapLayerComboBox()
-        self.layer_combo.setFilters(QgsMapLayerProxyModel.LineLayer)
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         self.layer_combo.setToolTip(
             self.tr("Choose the line layer to process"))
         layer_layout.addWidget(self.layer_combo)
@@ -103,7 +103,7 @@ class LinesToPolygonsDialog(BaseDialog):
         if not layer_field:
             self.log_message(
                 self.tr("No 'Layer' field in the selected layer."),
-                Qgis.Warning)
+                Qgis.MessageLevel.Warning)
             return
 
         idx = layer.fields().indexOf(layer_field)
@@ -155,7 +155,7 @@ class LinesToPolygonsDialog(BaseDialog):
         selected_set = set(selected_values)
         groups = defaultdict(list)
         idx = layer.fields().indexOf(field_name)
-        request = QgsFeatureRequest().setFlags(QgsFeatureRequest.NoGeometry)
+        request = QgsFeatureRequest().setFlags(QgsFeatureRequest.Flag.NoGeometry)
         request.setSubsetOfAttributes([idx])
         for feat in layer.getFeatures(request):
             val = feat.attribute(idx)
@@ -227,7 +227,7 @@ class LinesToPolygonsDialog(BaseDialog):
                 if not fids:
                     self.log_message(
                         self.tr("No features found for '{0}'").format(value),
-                        Qgis.Warning)
+                        Qgis.MessageLevel.Warning)
                     self.progress_bar.setValue(i + 1)
                     QApplication.processEvents()
                     continue
@@ -247,7 +247,7 @@ class LinesToPolygonsDialog(BaseDialog):
                     self.log_message(
                         self.tr("Polygon build failed for '{0}': {1}").format(
                             value, e),
-                        Qgis.Warning)
+                        Qgis.MessageLevel.Warning)
 
                 self.progress_bar.setValue(i + 1)
                 QApplication.processEvents()

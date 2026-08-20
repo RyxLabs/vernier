@@ -701,7 +701,7 @@ class CommandBar(QDockWidget):
                     _tr("Command Bar hidden. Bring it back from "
                         "View > Panels > Vernier Command Bar, or by "
                         "switching CAD Mode off and on."),
-                    level=Qgis.Info, duration=8)
+                    level=Qgis.MessageLevel.Info, duration=8)
             except (RuntimeError, AttributeError):
                 pass
         super().closeEvent(event)
@@ -1150,7 +1150,7 @@ class CommandBar(QDockWidget):
         # measureArea() units follow the CRS and ellipsoid, so on a geographic layer the raw sum is square degrees - normalize before calling it m2/ha, same as tools/area_readout does
         try:
             total = sum(da.measureArea(f.geometry()) for f in features)
-            sqm = da.convertAreaMeasurement(total, QgsUnitTypes.AreaSquareMeters)
+            sqm = da.convertAreaMeasurement(total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
         except QgsCsException:
             self.log(_tr("! Cannot measure area in this layer's CRS"))
             return
@@ -1211,7 +1211,7 @@ class CommandBar(QDockWidget):
                 tool_is_editing = False
                 try:
                     tool_is_editing = bool(
-                        tool and tool.flags() & QgsMapTool.EditTool)
+                        tool and tool.flags() & QgsMapTool.Flag.EditTool)
                 except (RuntimeError, AttributeError):
                     pass
                 # a bare key press shouldn't pick a layer or open an edit session for you, so only an already-editing active layer can be erased from the keyboard

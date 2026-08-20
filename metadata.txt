@@ -2,7 +2,6 @@
 name=Vernier
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
-supportsQt6=True
 description=Vector editing toolkit: smart snapping, topology validation, polygon splitting to exact areas, attribute and spatial joins, DXF/DWG and KMZ exchange, autosave backups, and an optional CAD Mode with a typed command bar.
 about=Vernier is a vector editing toolkit for QGIS.
 

@@ -133,7 +133,7 @@ def clean_geometry(geometry, tolerance, count_shared):
     gtype = QgsWkbTypes.geometryType(wkb)
     is_multi = QgsWkbTypes.isMultiType(wkb)
 
-    if gtype == QgsWkbTypes.PolygonGeometry:
+    if gtype == QgsWkbTypes.GeometryType.PolygonGeometry:
         parts = geometry.asMultiPolygon() if is_multi \
             else [geometry.asPolygon()]
         new_parts = []
@@ -155,7 +155,7 @@ def clean_geometry(geometry, tolerance, count_shared):
             return QgsGeometry.fromMultiPolygonXY(new_parts), removed
         return QgsGeometry.fromPolygonXY(new_parts[0]), removed
 
-    if gtype == QgsWkbTypes.LineGeometry:
+    if gtype == QgsWkbTypes.GeometryType.LineGeometry:
         parts = geometry.asMultiPolyline() if is_multi \
             else [geometry.asPolyline()]
         new_parts = []

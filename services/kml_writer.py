@@ -89,17 +89,17 @@ def geometry_to_kml(geometry: QgsGeometry, geometry_type):
     if g is None:
         return None
 
-    if geometry_type == QgsWkbTypes.PolygonGeometry:
+    if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
         if geometry.isMultipart():
             return _multi([_poly_to_kml(p) for p in g])
         return _poly_to_kml(g)
 
-    if geometry_type == QgsWkbTypes.LineGeometry:
+    if geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
         if geometry.isMultipart():
             return _multi([_line_kml(p) for p in g])
         return _line_kml(g)
 
-    if geometry_type == QgsWkbTypes.PointGeometry:
+    if geometry_type == QgsWkbTypes.GeometryType.PointGeometry:
         if geometry.isMultipart():
             return _multi([_point_kml(p) for p in g])
         return _point_kml(g)
@@ -146,14 +146,14 @@ def layer_to_kml(layer, label_fields, transform_context,
     lid = f"lbl{style_index}"
 
     # no label on the polygon itself, it rides on the companion point placemark further down
-    if gt == QgsWkbTypes.PolygonGeometry:
+    if gt == QgsWkbTypes.GeometryType.PolygonGeometry:
         style = (
             f'<Style id="{sid}"><LineStyle><color>{col}</color>'
             f'<width>1.5</width>'
             f'</LineStyle><PolyStyle><fill>0</fill><outline>1</outline>'
             f'</PolyStyle></Style>'
         )
-    elif gt == QgsWkbTypes.LineGeometry:
+    elif gt == QgsWkbTypes.GeometryType.LineGeometry:
         sc = "1.0" if has_labels else "0"
         style = (
             f'<Style id="{sid}"><LineStyle><color>{col}</color>'
@@ -175,7 +175,7 @@ def layer_to_kml(layer, label_fields, transform_context,
     lines = [style]
 
     # label-point style for polygons, invisible icon and visible text
-    if gt == QgsWkbTypes.PolygonGeometry and has_labels:
+    if gt == QgsWkbTypes.GeometryType.PolygonGeometry and has_labels:
         lines.append(
             f'<Style id="{lid}"><IconStyle><scale>0</scale></IconStyle>'
             f'<LabelStyle><color>{col}</color><scale>1.0</scale>'
@@ -210,7 +210,7 @@ def layer_to_kml(layer, label_fields, transform_context,
             lines.append("  </Placemark>")
 
             # the label-point style only gets emitted for polygon layers, so an off-type row must not link to it
-            if gt == QgsWkbTypes.PolygonGeometry and fgt == gt and label:
+            if gt == QgsWkbTypes.GeometryType.PolygonGeometry and fgt == gt and label:
                 interior_pt = geom.pointOnSurface()
                 if interior_pt and not interior_pt.isEmpty():
                     # built before the first append, so a failure here can't leave half a Placemark behind
@@ -226,13 +226,13 @@ def layer_to_kml(layer, label_fields, transform_context,
             skipped += 1
             QgsMessageLog.logMessage(
                 f"KMZ export - {layer.name()} feature {f.id()}: {e}",
-                PLUGIN_NAME, Qgis.Warning)
+                PLUGIN_NAME, Qgis.MessageLevel.Warning)
 
     if skipped:
         QgsMessageLog.logMessage(
             f"KMZ export - {layer.name()}: {skipped} features skipped "
             f"(no geometry, failed reprojection or unsupported type)",
-            PLUGIN_NAME, Qgis.Warning)
+            PLUGIN_NAME, Qgis.MessageLevel.Warning)
 
     return "\n".join(lines), count
 
