@@ -1,0 +1,58 @@
+[general]
+name=Vernier
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.99
+supportsQt6=True
+description=Vector editing toolkit: smart snapping, topology validation, polygon splitting to exact areas, attribute and spatial joins, DXF/DWG and KMZ exchange, autosave backups, and an optional CAD Mode with a typed command bar.
+about=Vernier is a vector editing toolkit for QGIS.
+
+    The toolbox adds a one-click snapping profile, a topology validator that
+    outputs styled error layers, topology-aware Remove Close Vertices,
+    Find Duplicate Geometries, polygon splitting to exact target areas,
+    polygon centerline (medial axis) extraction, styled DXF/DWG import and DXF
+    export with labels, multi-layer KMZ export with label placemarks, attribute
+    and spatial joins, quick symbology templates, versioned autosave backups with
+    a restore browser, and a live area readout for selected polygons.
+
+    CAD Mode (off by default) adds a typed command bar with autocomplete, a dark
+    canvas with a scalable grid, and a live status strip. It follows the workspace
+    conventions shared by AutoCAD, BricsCAD, ZWCAD, GstarCAD, DraftSight and other
+    DWG/DXF software, and the import/export tools read and write drawings from any
+    of them.
+
+    EXTERNAL DEPENDENCIES - all core tools run on a stock QGIS with no extra
+    packages. Only these optional tools need more:
+
+    * DXF import/export needs the 'ezdxf' Python package. The plugin offers a
+    one-click, consent-based install into a private folder of the QGIS user
+    profile - never into the QGIS installation, and never without asking. The
+    profile folder is used so the package survives plugin updates. It can also
+    be installed manually with 'python -m pip install ezdxf' from the OSGeo4W
+    Shell on Windows or your system Python on Linux/macOS.
+    * Centerline extraction uses 'shapely', which already ships with QGIS.
+    * DWG (not DXF) import needs the free ODA File Converter, installed
+    separately by the user. The plugin only locates it on disk and never
+    downloads it.
+version=0.9.0
+author=RyxLabs
+email=hello@ryxlabs.dev
+changelog=0.9.0:
+    * Initial release
+    * Runs on QGIS 3.28+ and QGIS 4 (Qt5 and Qt6)
+    * CAD Mode: typed command bar with autocomplete (42 commands, 78 aliases), dark canvas, scalable grid, status strip with F2/F4/F9 indicators, configurable F8 basemap toggle
+    * Editing: smart snapping profile, split polygons to exact target areas, topology-aware Remove Close Vertices, centerline extraction
+    * Validation: topology validator with clickable results and styled error layers, Find Duplicate Geometries
+    * Exchange: DXF/DWG import with CAD styling, DXF export with labels and split-by-field, multi-layer KMZ export
+    * Data: attribute and spatial joins with match preview and provenance columns
+    * Plus: quick symbology with reusable templates, versioned autosave backups with restore browser, live area readout for selected polygons, one-click geoprocessing
+
+tags=vector,editing,digitizing,cad,autocad,bricscad,zwcad,command line,snapping,topology,validation,split,parcel,centerline,dxf,dwg,kmz,kml,export,import,join,spatial join,backup,autosave,symbology
+homepage=https://ryxlabs.dev
+repository=https://github.com/ryxlabs/vernier
+tracker=https://github.com/ryxlabs/vernier/issues
+icon=icons/vernier.svg
+experimental=False
+deprecated=False
+license=GPL-2.0-or-later
+category=Vector
+server=False

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# working notes
+JOURNAL.md
+
+dist/
+*.zip
+
+# QGIS drops a stock symbology-style.db into the working directory
+*.db
+
+# deps.py falls back to pip-installing into <plugin>/libs outside a QGIS profile
+libs/
+
+.vscode/
+.idea/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # release-3_28 is the qgisMinimumVersion floor and release-3_34
+        # the Qt5 LTR; latest tracks the Qt6 / QGIS 4 line
+        image:
+          - "qgis/qgis:release-3_28"
+          - "qgis/qgis:release-3_34"
+          - "qgis/qgis:latest"
+    container: ${{ matrix.image }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      # checkout into a folder named like the python package, so the
+      # tests' sys.path bootstrap (plugins dir = repo parent) resolves
+      # "import vernier" exactly as it does inside a QGIS profile
+      - uses: actions/checkout@v4
+        with:
+          path: vernier
+
+      - name: Install optional test dependencies
+        run: |
+          pip3 install --break-system-packages ezdxf shapely 2>/dev/null \
+            || pip3 install ezdxf shapely
+
+      # one process per module: QGIS allows a single initQgis/exitQgis
+      # cycle per process, so unittest discover would crash
+      - name: Run test suites
+        shell: bash
+        working-directory: vernier
+        run: |
+          failed=0
+          for t in test/test_*.py; do
+            echo "=== $t ==="
+            python3 "$t" || failed=1
+          done
+          exit $failed

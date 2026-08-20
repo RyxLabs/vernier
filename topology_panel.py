@@ -1,0 +1,554 @@
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2026 RYXLAB SOFT TECH SRL (RyxLabs)
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Topology Validator - runs the five topology_service checks and lists the findings in a tree whose rows zoom and highlight, plus styled memory error layers for the overlap, gap and vertex classes."""
+
+# owns canvas rubber bands, so the plugin has to call cleanup() from unload()
+
+from qgis.PyQt.QtCore import Qt  # type: ignore
+from qgis.PyQt.QtGui import QColor  # type: ignore
+from qgis.PyQt.QtWidgets import (  # type: ignore
+    QApplication, QCheckBox, QDockWidget, QDoubleSpinBox, QFormLayout,
+    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QProgressBar, QPushButton,
+    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+)
+from qgis.core import (  # type: ignore
+    Qgis, QgsCategorizedSymbolRenderer, QgsCoordinateTransform,
+    QgsCsException, QgsFeature, QgsField, QgsFillSymbol,
+    QgsMapLayerProxyModel, QgsMarkerSymbol, QgsMessageLog, QgsProject,
+    QgsRectangle, QgsRendererCategory, QgsSingleSymbolRenderer,
+    QgsUnitTypes, QgsVectorLayer, QgsWkbTypes,
+)
+from qgis.gui import QgsMapLayerComboBox, QgsRubberBand  # type: ignore
+
+from .qt_compat import FIELD_DOUBLE, FIELD_LONGLONG, FIELD_STRING
+from .i18n import tr as _tr
+from .services import settings_service, topology_service
+
+# (key, label, polygon_only) in display and run order, labels translated at consumption
+_CHECKS = (
+    ("validity", "Invalid geometries", False),
+    ("duplicates", "Duplicate geometries", False),
+    ("overlaps", "Overlaps", True),
+    ("gaps", "Gaps", True),
+    ("vertex", "Vertex errors", True),
+)
+
+# marker so a later run, in any UI locale, can find and replace our layers without touching a user layer that happens to share the name
+_ERROR_LAYER_FLAG = "vernier/topology_error"
+
+# subtype -> (color, label) for the vertex error categories
+_POINT_CATEGORIES = (
+    (topology_service.VERTEX_DUPLICATE_POINT, "#d90429", "Duplicate point"),
+    (topology_service.VERTEX_CLOSE_VERTICES, "#f77f00", "Close vertices"),
+    (topology_service.VERTEX_SHORT_SEGMENT, "#fcbf49", "Short segment"),
+)
+
+
+def _discard_previous_results():
+    project = QgsProject.instance()
+    stale = [layer.id() for layer in project.mapLayers().values()
+             if layer.customProperty(_ERROR_LAYER_FLAG)]
+    if stale:
+        project.removeMapLayers(stale)
+
+
+def _polygon_renderer(fill_rgba, outline):
+    return QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({
+        "color": fill_rgba,
+        "outline_color": outline,
+        "outline_width": "0.66",
+    }))
+
+
+def _vertex_renderer():
+    categories = []
+    for subtype, color, label in _POINT_CATEGORIES:
+        marker = QgsMarkerSymbol.createSimple({
+            "name": "square",
+            "color": color,
+            "size": "2.8",
+            "outline_color": "#003049",
+            "outline_width": "0.3",
+        })
+        categories.append(QgsRendererCategory(subtype, marker, _tr(label)))
+    return QgsCategorizedSymbolRenderer("issue", categories)
+
+
+def _publish_error_layer(crs, shape, name, schema, rows, renderer):
+    """One styled memory error layer at the top of the layer tree, rows as (geometry, attributes) pairs. None when the layer could not be created."""
+    layer = QgsVectorLayer(shape, name, "memory")
+    if not layer.isValid():
+        QgsMessageLog.logMessage(
+            f"Could not create the error layer '{name}'.",
+            "Vernier", level=Qgis.MessageLevel.Warning)
+        return None
+    layer.setCrs(crs)
+    layer.setCustomProperty(_ERROR_LAYER_FLAG, True)
+    provider = layer.dataProvider()
+    provider.addAttributes(schema)
+    layer.updateFields()
+    carriers = []
+    for geometry, attributes in rows:
+        carrier = QgsFeature(layer.fields())
+        carrier.setGeometry(geometry)
+        carrier.setAttributes(attributes)
+        carriers.append(carrier)
+    provider.addFeatures(carriers)
+    layer.updateExtents()
+    layer.setRenderer(renderer)
+    # top of the tree, or the overlay ends up buried under the data it marks
+    project = QgsProject.instance()
+    project.addMapLayer(layer, False)
+    project.layerTreeRoot().insertLayer(0, layer)
+    return layer
+
+
+def build_error_layers(errors, crs):
+    """Publish the error classes as styled memory layers, replacing whatever the previous run left. Returns what it made. Invalid and duplicate findings get rubber-band highlights instead of layers, so only these three classes publish."""
+    _discard_previous_results()
+    published = []
+
+    overlaps = [e for e in errors
+                if e.kind == topology_service.KIND_OVERLAP]
+    if overlaps:
+        published.append(_publish_error_layer(
+            crs, "Polygon", _tr("Topology overlaps"),
+            [QgsField("issue", FIELD_STRING),
+             QgsField("feature_a", FIELD_LONGLONG),
+             QgsField("feature_b", FIELD_LONGLONG),
+             QgsField("area", FIELD_DOUBLE)],
+            [(e.conflict,
+              [e.kind, e.feature_ids[0], e.feature_ids[1], e.value])
+             for e in overlaps],
+            _polygon_renderer("216,17,89,110", "#a30d43")))
+
+    gaps = [e for e in errors if e.kind == topology_service.KIND_GAP]
+    if gaps:
+        published.append(_publish_error_layer(
+            crs, "Polygon", _tr("Topology gaps"),
+            [QgsField("issue", FIELD_STRING),
+             QgsField("area", FIELD_DOUBLE)],
+            [(e.conflict, [e.kind, e.value]) for e in gaps],
+            _polygon_renderer("2,136,209,110", "#01579b")))
+
+    vertex = [e for e in errors if e.kind == topology_service.KIND_VERTEX]
+    if vertex:
+        # "issue" carries the subtype here, not the kind - the categorized renderer keys on it
+        published.append(_publish_error_layer(
+            crs, "Point", _tr("Topology vertex errors"),
+            [QgsField("issue", FIELD_STRING),
+             QgsField("feature", FIELD_LONGLONG),
+             QgsField("length", FIELD_DOUBLE),
+             QgsField("note", FIELD_STRING)],
+            [(e.conflict,
+              [e.subtype, e.feature_ids[0], e.value, e.description])
+             for e in vertex],
+            _vertex_renderer()))
+
+    return [layer for layer in published if layer is not None]
+
+
+class TopologyPanel(QDockWidget):
+    """Built on first use, cleanup() comes from unload()."""
+
+    def tr(self, text: str) -> str:
+        # one "Vernier" context for the whole plugin, see i18n.py. QObject.tr would use the class name instead and these strings would land outside it
+        return _tr(text)
+
+    def __init__(self, iface, parent=None):
+        super().__init__(parent or iface.mainWindow())
+        self.iface = iface
+        self.setWindowTitle(self.tr("Topology Validator"))
+        self.setObjectName("VernierTopologyPanel")
+
+        self._errors = []
+        self._layer = None
+        self._running = False
+
+        canvas = iface.mapCanvas()
+        # conflict band matches the overlap layer's crimson, the features involved get a muted slate so they read as context rather than error
+        self._rb_conflict = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+        self._rb_conflict.setColor(QColor(216, 17, 89, 110))
+        self._rb_conflict.setWidth(3)
+        self._rb_conflict.setIcon(QgsRubberBand.ICON_CIRCLE)
+        self._rb_conflict.setIconSize(12)
+        self._rb_features = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+        self._rb_features.setColor(QColor(69, 123, 157, 70))
+        self._rb_features.setWidth(3)
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        layer_row = QHBoxLayout()
+        layer_row.addWidget(QLabel(self.tr("Layer:")))
+        self.layer_combo = QgsMapLayerComboBox()
+        self.layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        layer_row.addWidget(self.layer_combo, 1)
+        layout.addLayout(layer_row)
+
+        self.crs_warning = QLabel(self.tr(
+            "Warning: this layer uses a geographic CRS, so the tolerances "
+            "below are in degrees. Reproject to a projected CRS to work "
+            "in meters."))
+        self.crs_warning.setWordWrap(True)
+        self.crs_warning.setStyleSheet(
+            "color: #d9822b; font-weight: bold; padding: 4px;")
+        self.crs_warning.setVisible(False)
+        layout.addWidget(self.crs_warning)
+
+        checks_group = QGroupBox(self.tr("Checks"))
+        checks_layout = QVBoxLayout()
+        self.check_boxes = {}
+        for key, label, _polygon_only in _CHECKS:
+            box = QCheckBox(self.tr(label))
+            box.setChecked(True)
+            self.check_boxes[key] = box
+            checks_layout.addWidget(box)
+        checks_group.setLayout(checks_layout)
+        layout.addWidget(checks_group)
+
+        tolerances_group = QGroupBox(self.tr("Tolerances (layer units)"))
+        form = QFormLayout()
+
+        self.snap_spin = QDoubleSpinBox()
+        self.snap_spin.setRange(0.0, 100000.0)
+        self.snap_spin.setDecimals(6)
+        self.snap_spin.setSingleStep(0.001)
+        self.snap_spin.setValue(settings_service.get("topology/snap_tolerance"))
+        self.snap_spin.setToolTip(self.tr(
+            "Gap check: cracks narrower than this are closed by snapping\n"
+            "before looking for gaps"))
+        form.addRow(self.tr("Snap tolerance:"), self.snap_spin)
+
+        self.gap_area_spin = QDoubleSpinBox()
+        self.gap_area_spin.setRange(0.0, 1000000000.0)
+        self.gap_area_spin.setDecimals(4)
+        self.gap_area_spin.setSingleStep(0.01)
+        self.gap_area_spin.setValue(
+            settings_service.get("topology/gap_min_area"))
+        self.gap_area_spin.setToolTip(self.tr(
+            "Gaps smaller than this area are ignored"))
+        form.addRow(self.tr("Minimum gap area:"), self.gap_area_spin)
+
+        self.gap_buffer_spin = QDoubleSpinBox()
+        self.gap_buffer_spin.setRange(0.0, 100000.0)
+        self.gap_buffer_spin.setDecimals(6)
+        self.gap_buffer_spin.setSingleStep(0.0001)
+        self.gap_buffer_spin.setValue(
+            settings_service.get("topology/gap_buffer"))
+        self.gap_buffer_spin.setToolTip(self.tr(
+            "Gap check: slivers narrower than about twice this value are\n"
+            "treated as snapping residue and not reported"))
+        form.addRow(self.tr("Sliver tolerance:"), self.gap_buffer_spin)
+
+        self.vertex_spin = QDoubleSpinBox()
+        self.vertex_spin.setRange(0.0, 100000.0)
+        self.vertex_spin.setDecimals(6)
+        self.vertex_spin.setSingleStep(0.001)
+        self.vertex_spin.setValue(
+            settings_service.get("topology/vertex_tolerance"))
+        self.vertex_spin.setToolTip(self.tr(
+            "Vertices closer than this are reported; segments shorter\n"
+            "than 10x this are reported as short segments"))
+        form.addRow(self.tr("Vertex tolerance:"), self.vertex_spin)
+
+        tolerances_group.setLayout(form)
+        layout.addWidget(tolerances_group)
+
+        run_row = QHBoxLayout()
+        self.run_button = QPushButton(self.tr("Run checks"))
+        self.run_button.clicked.connect(self._run)
+        run_row.addWidget(self.run_button)
+        run_row.addStretch()
+        layout.addLayout(run_row)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        layout.addWidget(self.progress_bar)
+
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels([
+            self.tr("Check"), self.tr("Count"), self.tr("Description"),
+        ])
+        self.tree.setAlternatingRowColors(True)
+        header = self.tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.tree.itemClicked.connect(self._on_item_clicked)
+        layout.addWidget(self.tree, 1)
+
+        self.status_label = QLabel(self.tr("Not checked yet."))
+        layout.addWidget(self.status_label)
+
+        self.setWidget(content)
+
+        self.layer_combo.layerChanged.connect(self._update_layer_info)
+        self._preselect_active_layer()
+        self._update_layer_info()
+
+    # --- lifecycle ---
+
+    def cleanup(self):
+        """Take the rubber bands off the canvas. unload() calls this, and the panel is inert after it."""
+        canvas = None
+        try:
+            canvas = self.iface.mapCanvas()
+        except RuntimeError:
+            pass
+        for band in (self._rb_conflict, self._rb_features):
+            if band is None:
+                continue
+            try:
+                band.reset()
+                if canvas is not None:
+                    canvas.scene().removeItem(band)
+            except RuntimeError:
+                pass  # C++ object is gone
+        self._rb_conflict = None
+        self._rb_features = None
+        self._errors = []
+        self._layer = None
+
+    def closeEvent(self, event):
+        if self._running:
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    # --- layer selection ---
+
+    def _preselect_active_layer(self):
+        """Preselect the active layer, if it got past the combo's filter."""
+        active = self.iface.activeLayer()
+        if not isinstance(active, QgsVectorLayer):
+            return
+        for i in range(self.layer_combo.count()):
+            layer = self.layer_combo.layer(i)
+            if layer is not None and layer.id() == active.id():
+                self.layer_combo.setLayer(active)
+                return
+
+    def _update_layer_info(self):
+        layer = self.layer_combo.currentLayer()
+        is_polygon = (isinstance(layer, QgsVectorLayer)
+                      and layer.geometryType()
+                      == QgsWkbTypes.PolygonGeometry)
+        for key, _label, polygon_only in _CHECKS:
+            if polygon_only:
+                box = self.check_boxes[key]
+                box.setEnabled(is_polygon)
+                box.setToolTip(
+                    "" if is_polygon else self.tr("Polygon layers only"))
+
+        suffix = ""
+        area_suffix = ""
+        geographic = False
+        if (isinstance(layer, QgsVectorLayer) and layer.isValid()
+                and layer.crs().isValid()):
+            units = layer.crs().mapUnits()
+            suffix = " " + QgsUnitTypes.toAbbreviatedString(units)
+            area_suffix = " " + QgsUnitTypes.toAbbreviatedString(
+                QgsUnitTypes.distanceToAreaUnit(units))
+            geographic = layer.crs().isGeographic()
+        for spin in (self.snap_spin, self.gap_buffer_spin, self.vertex_spin):
+            spin.setSuffix(suffix)
+        self.gap_area_spin.setSuffix(area_suffix)
+        self.crs_warning.setVisible(geographic)
+
+    # --- running ---
+
+    def _active_checks(self, layer):
+        is_polygon = layer.geometryType() == QgsWkbTypes.PolygonGeometry
+        return [(key, label) for key, label, polygon_only in _CHECKS
+                if self.check_boxes[key].isChecked()
+                and (is_polygon or not polygon_only)]
+
+    def _run_check(self, key, layer, progress):
+        if key == "validity":
+            return topology_service.check_validity(layer, progress=progress)
+        if key == "duplicates":
+            return topology_service.check_duplicates(layer, progress=progress)
+        if key == "overlaps":
+            return topology_service.check_overlaps(layer, progress=progress)
+        if key == "gaps":
+            return topology_service.check_gaps(
+                layer,
+                snap_tolerance=self.snap_spin.value(),
+                gap_min_area=self.gap_area_spin.value(),
+                gap_buffer=self.gap_buffer_spin.value(),
+                progress=progress)
+        return topology_service.check_vertex_errors(
+            layer, tolerance=self.vertex_spin.value(), progress=progress)
+
+    def _run(self):
+        # the progress callbacks pump the event loop, so a second click mid-run has to bounce
+        if self._running:
+            return
+        layer = self.layer_combo.currentLayer()
+        if (not isinstance(layer, QgsVectorLayer) or not layer.isValid()
+                or layer.featureCount() == 0):
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("Select a vector layer with features first."),
+                level=Qgis.MessageLevel.Warning, duration=5)
+            return
+        checks = self._active_checks(layer)
+        if not checks:
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("Enable at least one check that applies to this "
+                        "layer."),
+                level=Qgis.MessageLevel.Warning, duration=5)
+            return
+
+        # keep the tolerances for next time
+        settings_service.set_("topology/snap_tolerance",
+                              self.snap_spin.value())
+        settings_service.set_("topology/gap_min_area",
+                              self.gap_area_spin.value())
+        settings_service.set_("topology/gap_buffer",
+                              self.gap_buffer_spin.value())
+        settings_service.set_("topology/vertex_tolerance",
+                              self.vertex_spin.value())
+
+        self._clear_highlight()
+        self._errors = []
+        self._layer = layer
+        self.tree.clear()
+
+        self._running = True
+        self.run_button.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            slice_size = 100.0 / len(checks)
+            for position, (key, label) in enumerate(checks):
+                base = position * slice_size
+
+                def on_progress(percent, base=base):
+                    self.progress_bar.setValue(
+                        int(base + percent * slice_size / 100.0))
+                    QApplication.processEvents()
+
+                # the gap check's union phase reports no progress at all, so name the running check or a long wait reads as a freeze
+                self.status_label.setText(
+                    self.tr("Running: {0}").format(self.tr(label)))
+                QApplication.processEvents()
+                try:
+                    errors = self._run_check(key, layer, on_progress)
+                except Exception as e:  # one failing check shouldn't kill the run
+                    QgsMessageLog.logMessage(
+                        f"Topology check '{key}' failed: {e}", "Vernier",
+                        level=Qgis.MessageLevel.Critical)
+                    self._add_check_branch(label, None, str(e))
+                    continue
+                self._add_check_branch(label, errors, "")
+                self._errors.extend(errors)
+            self.progress_bar.setValue(100)
+
+            build_error_layers(self._errors, layer.crs())
+            self.iface.mapCanvas().refresh()
+
+            count = len(self._errors)
+            if count == 0:
+                self.status_label.setText(self.tr("No errors found."))
+                self.iface.messageBar().pushMessage(
+                    self.tr("Topology Validator"),
+                    self.tr("No topology errors found."),
+                    level=Qgis.MessageLevel.Success, duration=5)
+            elif count == 1:
+                self.status_label.setText(
+                    self.tr("Found 1 error - click the row to zoom to it."))
+            else:
+                self.status_label.setText(
+                    self.tr("Found {0} errors - click a row to zoom to "
+                            "it.").format(count))
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.progress_bar.setVisible(False)
+            self._running = False
+            self.run_button.setEnabled(True)
+
+    def _add_check_branch(self, label, errors, failure):
+        if errors is None:
+            top = QTreeWidgetItem([
+                self.tr(label), "-",
+                self.tr("Check failed: {0}").format(failure)])
+            self.tree.addTopLevelItem(top)
+            return
+        description = (self.tr("no errors") if not errors
+                       else self.tr("{0} found").format(len(errors)))
+        top = QTreeWidgetItem([self.tr(label), str(len(errors)), description])
+        # this branch's errors get appended to self._errors right after, so their global indices start at the current length
+        base = len(self._errors)
+        for offset, error in enumerate(errors):
+            child = QTreeWidgetItem(["", "", error.description])
+            child.setData(0, Qt.ItemDataRole.UserRole, base + offset)
+            top.addChild(child)
+        self.tree.addTopLevelItem(top)
+        top.setExpanded(bool(errors))
+
+    # --- error navigation ---
+
+    def _clear_highlight(self):
+        for band in (self._rb_conflict, self._rb_features):
+            if band is None:
+                continue
+            try:
+                band.reset(QgsWkbTypes.PolygonGeometry)
+            except RuntimeError:
+                pass
+
+    def _on_item_clicked(self, item, column):
+        index = item.data(0, Qt.ItemDataRole.UserRole)
+        if index is None or self._rb_conflict is None:
+            return
+        if not 0 <= index < len(self._errors):
+            return
+        error = self._errors[index]
+        conflict = error.conflict
+        if conflict is None or conflict.isNull() or conflict.isEmpty():
+            return
+
+        layer = self._layer
+        try:
+            crs = layer.crs() if layer is not None else None
+        except RuntimeError:
+            self._layer = None  # C++ object deleted under us
+            layer = None
+            crs = None
+
+        canvas = self.iface.mapCanvas()
+        rect = QgsRectangle(conflict.boundingBox())
+        if rect.width() == 0 and rect.height() == 0:
+            # point errors get a close-up scaled off the vertex tolerance, so the zoom stays proportional to the layer units
+            rect.grow(max(self.vertex_spin.value() * 200, 1e-6))
+        else:
+            rect.scale(1.5)
+        if crs is not None and crs.isValid():
+            try:
+                rect = QgsCoordinateTransform(
+                    crs, canvas.mapSettings().destinationCrs(),
+                    QgsProject.instance()).transformBoundingBox(rect)
+            except QgsCsException:
+                return
+        canvas.setExtent(rect)
+
+        self._clear_highlight()
+        self._rb_conflict.reset(conflict.type())
+        self._rb_conflict.addGeometry(conflict, layer)
+        if error.feature_geometries:
+            self._rb_features.reset(error.feature_geometries[0].type())
+            for geometry in error.feature_geometries:
+                self._rb_features.addGeometry(geometry, layer)
+        canvas.refresh()
+        if crs is not None and crs.isValid():
+            canvas.flashGeometries([conflict], crs)

@@ -1,0 +1,13 @@
+# Bandit configuration for the Vernier QGIS plugin.
+#
+# Only the plugin runtime is in scope. test/ and scripts/ hold development
+# files that are kept out of the distribution zip (see scripts/build_zip.py)
+# and never execute inside QGIS, so their asserts (B101) and fixture path
+# strings (B108) are not part of the shipped attack surface.
+#
+# No check is globally disabled - `skips` is deliberately empty. The single
+# B608 in services/dxf_import_service.py is suppressed inline with
+# `# nosec B608` plus a justification, so SQL-injection detection stays
+# active across the rest of the codebase and for any code added later.
+[bandit]
+exclude = ./test,./scripts,./dist,./libs,./.git,./__pycache__

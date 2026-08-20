@@ -1,0 +1,9 @@
+# normalize line endings in the repo; contributors on Windows and the
+# Linux CI both see consistent files
+* text=auto
+*.svg text
+*.py text
+*.md text
+*.txt text
+*.json text
+*.yml text
