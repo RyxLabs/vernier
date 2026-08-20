@@ -171,7 +171,7 @@ class TopologyPanel(QDockWidget):
         self._rb_conflict = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         self._rb_conflict.setColor(QColor(216, 17, 89, 110))
         self._rb_conflict.setWidth(3)
-        self._rb_conflict.setIcon(QgsRubberBand.ICON_CIRCLE)
+        self._rb_conflict.setIcon(QgsRubberBand.IconType.ICON_CIRCLE)
         self._rb_conflict.setIconSize(12)
         self._rb_features = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         self._rb_features.setColor(QColor(69, 123, 157, 70))

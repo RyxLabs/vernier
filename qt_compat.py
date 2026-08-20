@@ -21,10 +21,8 @@ except AttributeError:  # Qt6 (QGIS 3.38+ built against Qt6, QGIS 4)
     FIELD_DOUBLE = QMetaType.Type.Double
 
 
-try:  # QGIS 3.30+
-    VALIDATOR_GEOS = QgsGeometry.ValidationMethod.ValidatorGeos
-except AttributeError:  # QGIS 3.28
-    VALIDATOR_GEOS = QgsGeometry.ValidatorGeos
+VALIDATOR_GEOS = getattr(
+    getattr(QgsGeometry, "ValidationMethod", QgsGeometry), "ValidatorGeos")
 
 __all__ = ["FIELD_DOUBLE", "FIELD_INT", "FIELD_LONGLONG", "FIELD_STRING",
            "VALIDATOR_GEOS"]
