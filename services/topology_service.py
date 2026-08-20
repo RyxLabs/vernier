@@ -17,6 +17,7 @@ from qgis.core import (  # type: ignore
 )
 
 from ..i18n import tr as _tr
+from ..qt_compat import VALIDATOR_GEOS
 
 # error kinds
 KIND_INVALID = "invalid"
@@ -61,7 +62,7 @@ def _per_feature_progress(progress: ProgressCallback, layer: QgsVectorLayer):
 
 def _geos_complaint(geometry: QgsGeometry) -> Optional[str]:
     """First GEOS complaint, None when the geometry is fine."""
-    findings = geometry.validateGeometry(QgsGeometry.ValidationMethod.ValidatorGeos)
+    findings = geometry.validateGeometry(VALIDATOR_GEOS)
     if not findings:
         return None
     return findings[0].what() or _tr("invalid geometry")
