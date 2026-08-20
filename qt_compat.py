@@ -21,8 +21,16 @@ except AttributeError:  # Qt6 (QGIS 3.38+ built against Qt6, QGIS 4)
     FIELD_DOUBLE = QMetaType.Type.Double
 
 
-VALIDATOR_GEOS = getattr(
-    getattr(QgsGeometry, "ValidationMethod", QgsGeometry), "ValidatorGeos")
+def _validator_geos(source):
+    """The GEOS validation method off a QgsGeometry-shaped class. On 3.28 ValidationMethod exists but carries no members and the names sit on the class itself, so a present namespace is not enough - the member has to be checked for. Looked up by name so neither spelling is pinned as an attribute access."""
+    scope = getattr(source, "ValidationMethod", None)
+    found = getattr(scope, "ValidatorGeos", None)
+    if found is None:
+        found = getattr(source, "ValidatorGeos")
+    return found
+
+
+VALIDATOR_GEOS = _validator_geos(QgsGeometry)
 
 __all__ = ["FIELD_DOUBLE", "FIELD_INT", "FIELD_LONGLONG", "FIELD_STRING",
            "VALIDATOR_GEOS"]

@@ -1,6 +1,6 @@
 # Vernier
 
-![tests](https://github.com/ryxlabs/vernier/actions/workflows/tests.yml/badge.svg)
+[![tests](https://github.com/ryxlabs/vernier/actions/workflows/tests.yml/badge.svg)](https://github.com/ryxlabs/vernier/actions/workflows/tests.yml)
 
 **Vector editing toolkit for QGIS.**
 
