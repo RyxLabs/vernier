@@ -1,9 +1,10 @@
 # Bandit configuration for the Vernier QGIS plugin.
 #
-# Only the plugin runtime is in scope. test/ and scripts/ hold development
-# files that are kept out of the distribution zip (see scripts/build_zip.py)
-# and never execute inside QGIS, so their asserts (B101) and fixture path
-# strings (B108) are not part of the shipped attack surface.
+# Only the plugin runtime is in scope. test/ holds development files that are
+# kept out of the distribution zip and never execute inside QGIS, so their
+# asserts (B101) and fixture path strings (B108) are not part of the shipped
+# attack surface. scripts/ is local build tooling, untracked but still excluded
+# so a local run does not report on it.
 #
 # No check is globally disabled - `skips` is deliberately empty. The single
 # B608 in services/dxf_import_service.py is suppressed inline with

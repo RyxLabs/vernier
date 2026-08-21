@@ -5,6 +5,9 @@ __pycache__/
 # working notes
 JOURNAL.md
 
+# local build tooling, not part of the shipped plugin
+scripts/
+
 dist/
 *.zip
 
