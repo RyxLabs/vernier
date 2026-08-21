@@ -19,7 +19,7 @@ from qgis.core import (  # noqa: E402  # type: ignore
 )
 
 from vernier.services.dxf_import_service import (  # noqa: E402
-    _GEOM_CLASSES, geom_style,
+    _GEOM_CLASSES, ENTITY_COLOR_EXPR, geom_style, hex_rgb,
 )
 
 QGS = None
@@ -123,6 +123,36 @@ class TestGeometryTokens(unittest.TestCase):
         self.assertEqual(gtype, "texts")
         self.assertTrue(is_text)
         self.assertEqual(token, _GEOM_CLASSES["POINT"][1])
+
+
+class TestHexRgb(unittest.TestCase):
+    """The color the import reads back out of GDAL's style strings."""
+
+    def test_parses_a_style_color(self):
+        self.assertEqual(hex_rgb("#23ff23"), (35, 255, 35))
+
+    def test_uppercase_is_fine(self):
+        self.assertEqual(hex_rgb("#E4F91C"), (228, 249, 28))
+
+    def test_black_is_a_color_not_a_missing_value(self):
+        # BYBLOCK entities resolve to black, and treating that as "no color"
+        # would send them back to the layer table they never used
+        self.assertEqual(hex_rgb("#000000"), (0, 0, 0))
+
+    def test_junk_is_rejected(self):
+        for value in (None, "", "#fff", "23ff23", "#gggggg", "#23ff23ff"):
+            with self.subTest(value=value):
+                self.assertIsNone(hex_rgb(value))
+
+
+class TestEntityColorExpression(unittest.TestCase):
+
+    def test_formats_with_field_and_fallback(self):
+        expr = ENTITY_COLOR_EXPR.format(field="OGR_STYLE", fallback="#23ff23")
+        self.assertIn('regexp_substr("OGR_STYLE"', expr)
+        # the {{6}} in the pattern has to survive as a plain {6} quantifier
+        self.assertIn("[0-9a-fA-F]{6}", expr)
+        self.assertIn("'#23ff23'", expr)
 
 
 if __name__ == "__main__":

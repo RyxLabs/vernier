@@ -6,7 +6,7 @@
 from collections import defaultdict
 
 from qgis.PyQt.QtWidgets import (  # type: ignore
-    QApplication, QCheckBox, QGroupBox, QHBoxLayout, QPushButton,
+    QApplication, QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 from qgis.core import (  # type: ignore
@@ -48,6 +48,17 @@ class LinesToPolygonsDialog(BaseDialog):
         layer_layout.addWidget(self.layer_combo)
         layer_group.setLayout(layer_layout)
         main_layout.addWidget(layer_group)
+
+        self.crs_warning = QLabel(self.tr(
+            "Warning: this layer has no CRS, so the polygons will not have "
+            "one either and their areas will be measured on the raw "
+            "coordinates. Set the layer's CRS in Layer Properties > Source, "
+            "or re-import the drawing with Import DXF / DWG."))
+        self.crs_warning.setWordWrap(True)
+        self.crs_warning.setStyleSheet(
+            "color: #d9822b; font-weight: bold; padding: 4px;")
+        self.crs_warning.setVisible(False)
+        main_layout.addWidget(self.crs_warning)
 
         self.preselect_active_layer(self.layer_combo)
 
@@ -96,6 +107,9 @@ class LinesToPolygonsDialog(BaseDialog):
         """Fill the scroll area with a checkbox per unique value."""
         self._clear_values()
         layer = self.layer_combo.currentLayer()
+        # a DXF added straight to QGIS brings no CRS, and the polygons inherit that - flag it here while the user can still fix the source
+        self.crs_warning.setVisible(
+            layer is not None and not layer.crs().isValid())
         if not layer or not layer.isValid():
             return
 

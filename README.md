@@ -4,7 +4,7 @@
 
 **Vector editing toolkit for QGIS.**
 
-Vernier bundles a CAD-style canvas and command bar, topology validation with styled error layers, polygon splitting to exact target areas, centerline extraction, DXF/DWG and KMZ exchange, and versioned autosave backups into a single toolbar. The core tools run on stock QGIS and need nothing else installed.
+Vernier bundles a CAD-style canvas and command bar, topology validation with styled error layers, polygon splitting to exact target areas, centerline extraction, DXF/DWG and KMZ exchange, and versioned autosave backups into a single toolbar. The core tools run on stock QGIS and nothing else needs to be installed.
 
 ## In Action
 
@@ -15,9 +15,8 @@ remainder.
 <p align="center"><img src="docs/media/split-to-target-areas.gif" alt="Splitting a parcel into pieces of exact target areas" width="880"></p>
 
 **CAD Mode.** The command bar accepts the commands you already use in other CAD
-software: `pl` draws a polyline, `cp` copies, `mv` moves. Every tool in the plugin
-answers to a command of its own as well, listed in the [table below](#tools), and
-autocomplete fills in the ones you only half remember. The mode also switches the
+software: `pl` draws a polyline, `cp` copies an element, `mv` moves it. Every tool in the plugin
+answers to a command of its own as well, listed in the [table below](#tools). The mode also switches the
 canvas to a dark theme with a scalable grid and adds a status strip.
 
 <p align="center"><img src="docs/media/cad-mode.gif" alt="CAD Mode command bar with autocomplete" width="880"></p>
@@ -29,12 +28,12 @@ problem and fix it in one pass.
 <p align="center"><img src="docs/media/topology-validator.gif" alt="Clicking a topology error to zoom to the offending geometry" width="880"></p>
 
 **DXF/DWG Import.** Each CAD layer becomes its own QGIS layer, drawn in the colors the
-entities render with rather than the ones the layer table declares.
+entities render.
 
 <p align="center"><img src="docs/media/dxf-import.gif" alt="A DWG drawing imported with its CAD styling intact" width="880"></p>
 
 **Centerline Extraction.** The tool computes the medial axis of a polygon, keeps the
-main trunk and straightens it, which suits parcels, roads and rivers.
+main trunk and straightens it.
 
 <p align="center"><img src="docs/media/centerline.gif" alt="Extracting the straightened medial axis of a polygon" width="880"></p>
 
@@ -86,7 +85,7 @@ Some tools need something extra:
 |---|---|---|
 | DXF import / export | `ezdxf` (Python) | The plugin can install it for you, into a private folder inside your QGIS user profile so that it survives plugin updates. It asks before doing so and leaves the QGIS installation untouched. To install it yourself, run `python -m pip install ezdxf` from the OSGeo4W Shell on Windows, or from your system Python on Linux and macOS. |
 | Centerline extraction | `shapely` (Python) | Ships with QGIS, so there is nothing to install. |
-| **DWG** import (not DXF) | [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) | Free, and you install it yourself. The plugin looks for it on disk and lets you point at it if it sits somewhere unusual. It never downloads anything. |
+| **DWG** import (not DXF) | [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) | You install it yourself. The plugin looks for it on disk and lets you point at it if it sits somewhere else. It never downloads anything. |
 
 ## Folder Structure
 
