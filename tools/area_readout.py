@@ -87,14 +87,28 @@ def area_calculator(crs, project) -> QgsDistanceArea:
     return calc
 
 
+def _has_nonfinite_vertex(geom):
+    return any(not (math.isfinite(p.x()) and math.isfinite(p.y()))
+               for p in geom.vertices())
+
+
 def measure_area_sqm(geometries, crs, project):
-    """Total area of an iterable of geometries in square meters, or None when there is no usable figure. Without a CRS the planar sum is passed through unconverted, so it is only square meters if the drawing was drawn in meters - which CAD drawings normally are, and a figure the user can sanity-check beats no figure. None is left for what no ellipsoid choice can rescue: a geometry carrying a NaN vertex, which QgsDistanceArea answers with NaN instead of raising, so a caller that only guards QgsCsException would print "nan m²"."""
+    """Total area of an iterable of geometries in square meters, or None when there is no usable figure. Without a CRS the planar sum is passed through unconverted, so it is only square meters if the drawing was drawn in meters - which CAD drawings normally are, and a figure the user can sanity-check beats no figure. None is left for what no ellipsoid choice can rescue: a geometry carrying a NaN vertex, which QgsDistanceArea answers without raising, so a caller that only guards QgsCsException would print a bad figure."""
     calc = area_calculator(crs, project)
     total = 0.0
     for geom in geometries:
         if geom is None or geom.isEmpty():
             continue
-        total += calc.measureArea(geom)
+        part = calc.measureArea(geom)
+        # 3.40 answers a NaN vertex with NaN, but 3.28 and 3.34 answer 0.0, so a
+        # part measuring zero is the only signal left that it was poisoned. The
+        # bounding box stays finite, and scanning every vertex up front costs
+        # more than the measurement itself on a large selection, so only the
+        # parts that come back zero or non-finite are worth looking at.
+        if (part == 0.0 or not math.isfinite(part)) \
+                and _has_nonfinite_vertex(geom):
+            return None
+        total += part
     # measureArea() units follow the CRS and ellipsoid, normalize to m²
     sqm = calc.convertAreaMeasurement(
         total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
