@@ -24,6 +24,18 @@ class TestAciRgb(unittest.TestCase):
         # ezdxf reports a layer switched off as a negative color index
         self.assertEqual(dxf_symbology.aci_rgb(-3), (0, 255, 0))
 
+    def test_greyscale_ramp_is_monotonic(self):
+        ramp = [dxf_symbology.aci_rgb(i)[0] for i in range(250, 256)]
+        self.assertEqual(ramp, sorted(ramp))
+        self.assertNotEqual(ramp[0], 0)
+        for grey in ramp:
+            self.assertEqual(dxf_symbology.aci_rgb(ramp.index(grey) + 250),
+                             (grey, grey, grey))
+
+    def test_seven_stays_black_for_a_light_canvas(self):
+        # ACI 7 is "black on white paper, white on a black CAD background". ezdxf's table answers white; on a QGIS canvas that is invisible
+        self.assertEqual(dxf_symbology.aci_rgb(7), (0, 0, 0))
+
     def test_out_of_table_falls_back_to_grey(self):
         self.assertEqual(dxf_symbology.aci_rgb(999), (128, 128, 128))
 
@@ -73,6 +85,50 @@ class TestLtDash(unittest.TestCase):
 
 
 class TestMakeQml(unittest.TestCase):
+
+    def test_color_expression_lands_inside_the_layer(self):
+        # QGIS reads a symbol layer's data-defined properties from a block  inside <layer>. An identical block one level up, next to <symbol>, parses fine, loads fine, and is silently ignored at render time
+        qml = dxf_symbology.make_qml("lines", 255, 0, 0,
+                                     color_expr="'#123456'")
+        populated = qml.index('<Option name="properties" type="Map">')
+        self.assertGreater(populated, qml.index("<layer "))
+        self.assertLess(populated, qml.index("</layer>"))
+
+    def test_color_expression_leaves_the_symbol_block_empty(self):
+        qml = dxf_symbology.make_qml("lines", 255, 0, 0,
+                                     color_expr="'#123456'")
+        symbol_part = qml[qml.index("<symbol "):qml.index("<layer ")]
+        self.assertIn('<Option name="properties"/>', symbol_part)
+
+    def test_color_expression_drives_the_stroke(self):
+        qml = dxf_symbology.make_qml("lines", 255, 0, 0,
+                                     color_expr="'#123456'")
+        self.assertIn('<Option name="outlineColor" type="Map">', qml)
+        self.assertIn("""'#123456'""", qml)
+
+    def test_without_an_expression_nothing_is_data_defined(self):
+        qml = dxf_symbology.make_qml("lines", 255, 0, 0)
+        self.assertNotIn('name="properties" type="Map"', qml)
+        self.assertIn('<Option name="properties"/>', qml)
+
+    def test_polygon_fill_is_never_data_defined(self):
+        # the fill is a 30-alpha wash, and a color expression evaluates opaque - CAD outlines would come back filled solid
+        qml = dxf_symbology.make_qml("polygons", 255, 0, 0,
+                                     color_expr="'#123456'")
+        self.assertIn('<Option name="outlineColor" type="Map">', qml)
+        self.assertNotIn('<Option name="fillColor" type="Map">', qml)
+
+    def test_texts_ignore_the_expression(self):
+        # labels take their color from the labeling engine, not the symbol layer
+        qml = dxf_symbology.make_qml("texts", 255, 0, 0,
+                                     color_expr="'#123456'")
+        self.assertNotIn("#123456", qml)
+
+    def test_expression_is_xml_escaped(self):
+        qml = dxf_symbology.make_qml(
+            "lines", 0, 0, 0, color_expr="""regexp_substr("OGR_STYLE", 'x')""")
+        self.assertIn("&quot;OGR_STYLE&quot;", qml)
+        self.assertNotIn('value="regexp_substr("', qml)
 
     def test_line_qml_carries_color_and_width(self):
         qml = dxf_symbology.make_qml("lines", 255, 0, 0, width_mm=0.5)

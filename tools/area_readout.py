@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Live area readout on the status bar - "n features | area" for the current polygon selection, measured with QgsDistanceArea so it holds up in a geographic CRS, which planar geometry.area() does not."""
 
+import math
+
 from qgis.PyQt.QtCore import QObject, Qt, QTimer  # type: ignore
 from qgis.PyQt.QtWidgets import QLabel  # type: ignore
 from qgis.core import (  # type: ignore
@@ -71,16 +73,32 @@ def format_area(sqm: float, units: str = "auto",
 
 
 def area_calculator(crs, project) -> QgsDistanceArea:
-    """QgsDistanceArea for a layer CRS, ellipsoidal where that matters. A project carries no ellipsoid by default, which on a geographic layer means square degrees converted with a fixed factor that ignores latitude and comes out tens of percent off, so use the CRS's own ellipsoid there."""
+    """QgsDistanceArea for a layer CRS, ellipsoidal where that matters. A project carries no ellipsoid by default, which on a geographic layer means square degrees converted with a fixed factor that ignores latitude and comes out tens of percent off, so use the CRS's own ellipsoid there. A layer with no CRS at all has nothing to transform from, and an ellipsoid on top of that measures NaN rather than raising, so it measures planar instead."""
     calc = QgsDistanceArea()
     calc.setSourceCrs(crs, project.transformContext())
     ellipsoid = project.ellipsoid()
-    if crs.isGeographic() and (not ellipsoid or ellipsoid.upper() == "NONE"):
+    if not crs.isValid():
+        calc.setEllipsoid("NONE")
+    elif crs.isGeographic() and (not ellipsoid or ellipsoid.upper() == "NONE"):
         if not calc.setEllipsoid(crs.ellipsoidAcronym()):
             calc.setEllipsoid("WGS84")
     else:
         calc.setEllipsoid(ellipsoid)
     return calc
+
+
+def measure_area_sqm(geometries, crs, project):
+    """Total area of an iterable of geometries in square meters, or None when there is no usable figure. Without a CRS the planar sum is passed through unconverted, so it is only square meters if the drawing was drawn in meters - which CAD drawings normally are, and a figure the user can sanity-check beats no figure. None is left for what no ellipsoid choice can rescue: a geometry carrying a NaN vertex, which QgsDistanceArea answers with NaN instead of raising, so a caller that only guards QgsCsException would print "nan m²"."""
+    calc = area_calculator(crs, project)
+    total = 0.0
+    for geom in geometries:
+        if geom is None or geom.isEmpty():
+            continue
+        total += calc.measureArea(geom)
+    # measureArea() units follow the CRS and ellipsoid, normalize to m²
+    sqm = calc.convertAreaMeasurement(
+        total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
+    return sqm if math.isfinite(sqm) else None
 
 
 class AreaReadout(QObject):
@@ -209,20 +227,14 @@ class AreaReadout(QObject):
             self._layer = None  # C++ object deleted under us
             return ""
 
-        calc = area_calculator(crs, QgsProject.instance())
-
         # measureArea raises QgsCsException when the layer CRS won't transform, and this runs inside a signal handler so nothing may propagate
         try:
-            total = 0.0
-            for feature in features:
-                geom = feature.geometry()
-                if geom is None or geom.isEmpty():
-                    continue
-                total += calc.measureArea(geom)
-            # measureArea() units follow the CRS and ellipsoid, normalize to m²
-            sqm = calc.convertAreaMeasurement(
-                total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
+            sqm = measure_area_sqm((f.geometry() for f in features),
+                                   crs, QgsProject.instance())
         except QgsCsException:
+            return ""
+        # no usable figure reads as no readout, the same as a failed transform
+        if sqm is None:
             return ""
 
         if count == 1:

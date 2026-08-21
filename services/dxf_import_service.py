@@ -23,7 +23,31 @@ PLUGIN_NAME = "Vernier"
 
 # the OGR DXF driver hands back one mixed "entities" layer, so the conversion tags every entity with its geometry class here - it's what separates text and nodes from linework. the name is spelled out in the SQL below, so the two move together
 GEOM_FIELD = "GeomType"
-ENTITIES_SQL = "SELECT *, OGR_GEOMETRY AS GeomType FROM entities"
+# OGR_STYLE is a special field, so "*" does not bring it - and it is the only place the color an entity actually renders with survives: GDAL resolves BYLAYER, BYBLOCK, explicit ACI and 24-bit true color into it, which the layer table alone cannot tell apart
+ENTITIES_SQL = ("SELECT *, OGR_GEOMETRY AS GeomType, OGR_STYLE "
+                "FROM entities")
+
+STYLE_FIELD = "OGR_STYLE"
+
+# the color inside a style string, as "#rrggbb" - "PEN(c:#23ff23,w:0.35mm)"
+_SQL_COLOR = (f"CASE WHEN instr([{STYLE_FIELD}], 'c:#') > 0 THEN "
+              f"substr([{STYLE_FIELD}], instr([{STYLE_FIELD}], 'c:#') + 2, 7) "
+              f"END")
+
+# same extraction as a QGIS expression, for the data-defined color on a CAD layer whose entities do not share one. the fallback keeps a feature with no usable style on the layer color instead of dropping it to black
+ENTITY_COLOR_EXPR = (
+    'coalesce(nullif(regexp_substr("{field}", '
+    "'c:(#[0-9a-fA-F]{{6}})'), ''), '{fallback}')")
+
+
+def hex_rgb(value):
+    """"#rrggbb" to (r, g, b), None for anything else."""
+    if not value or len(value) != 7 or not value.startswith("#"):
+        return None
+    try:
+        return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        return None
 
 
 # --- CAD noise-layer filtering ---
@@ -368,13 +392,21 @@ class DXFImportTask(QgsTask):
                     text_sel = "0"
 
                 # nosec B608 - none of this is user input: layer_field is one of the three literals above, the other fragments are our own column names, and tbl comes out of gpkg_contents in the GeoPackage this task just wrote itself
+                # distinct entity colors per group decide between a flat symbol and a data-defined one. a drawing GDAL gave no styles for collapses to one NULL, which reads as "no color of its own"
+                if STYLE_FIELD in cols:
+                    n_col_sel = f"COUNT(DISTINCT {_SQL_COLOR})"
+                    col_sel = f"MIN({_SQL_COLOR})"
+                else:
+                    n_col_sel, col_sel = "0", "NULL"
+
                 rows = conn.execute(
                     f'SELECT [{layer_field}], {geom_sel}, '  # nosec B608
-                    f'COUNT(*), {text_sel} FROM [{tbl}] '
+                    f'COUNT(*), {text_sel}, {n_col_sel}, {col_sel} '
+                    f'FROM [{tbl}] '
                     f'GROUP BY [{layer_field}], {geom_sel}'
                 ).fetchall()
 
-                for lname, gname, cnt, n_text in rows:
+                for lname, gname, cnt, n_text, n_colors, one_color in rows:
                     if not lname:
                         continue
                     if self.skip_keywords and is_skipped_layer(
@@ -382,7 +414,8 @@ class DXFImportTask(QgsTask):
                         skipped_layers.add(lname)
                         continue
                     unique_layers.setdefault(lname, []).append(
-                        (tbl, gname or "", cnt, n_text or 0))
+                        (tbl, gname or "", cnt, n_text or 0,
+                         n_colors or 0, one_color))
 
         if skipped_layers:
             self._log(f"Skipped layers: {len(skipped_layers)}")
@@ -397,7 +430,7 @@ class DXFImportTask(QgsTask):
         layer_info = {}
 
         for cad_layer, groups in sorted(unique_layers.items()):
-            for tbl, gname, cnt, n_text in groups:
+            for tbl, gname, cnt, n_text, n_colors, one_color in groups:
                 gtype, is_text, uri_type = geom_style(gname, cnt, n_text)
 
                 display = cad_layer
@@ -412,9 +445,26 @@ class DXFImportTask(QgsTask):
                     "lw_mm": 0.25, "dash": "", "aci": 7,
                 })
 
+                # the layer table is only the fallback - what the entities actually render with wins, since a drawing that colors its entities never shows the layer color at all
+                r, g, b = style["r"], style["g"], style["b"]
+                color_expr = ""
+                entity_rgb = hex_rgb(one_color)
+                if entity_rgb:
+                    r, g, b = entity_rgb
+                if n_colors > 1:
+                    color_expr = ENTITY_COLOR_EXPR.format(
+                        field=STYLE_FIELD,
+                        fallback=f"#{r:02x}{g:02x}{b:02x}")
+                    if is_text:
+                        # labels take their color from the labeling engine, which has no per-feature hook here, so they get one of them
+                        self._log(
+                            f"{display}: {n_colors} text colors, labeling all "
+                            f"of them {r:02x}{g:02x}{b:02x}")
+
                 qml_content = make_qml(
-                    gtype, style["r"], style["g"], style["b"],
+                    gtype, r, g, b,
                     style["lw_mm"], style["dash"], feature_count=cnt,
+                    color_expr=color_expr,
                 )
                 qml_name = _FS_ILLEGAL.sub("_", display)
                 qml_path = os.path.join(qml_dir, f"{qml_name}.qml")

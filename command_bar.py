@@ -21,7 +21,7 @@ from qgis.PyQt.QtWidgets import (  # type: ignore
 from qgis.core import (  # type: ignore
     Qgis, QgsCsException, QgsFillSymbol,
     QgsMarkerLineSymbolLayer, QgsMarkerSymbol, QgsProject, QgsRasterLayer,
-    QgsSimpleMarkerSymbolLayer, QgsSingleSymbolRenderer, QgsUnitTypes,
+    QgsSimpleMarkerSymbolLayer, QgsSingleSymbolRenderer,
     QgsVectorLayer,
 )
 from qgis.gui import QgsMapTool  # type: ignore
@@ -31,7 +31,7 @@ from .services import settings_service
 from .features import CATALOG
 from .i18n import tr as _tr
 from .tools import snap_tool
-from .tools.area_readout import area_calculator, format_area
+from .tools.area_readout import format_area, measure_area_sqm
 
 HISTORY_SIZE = 50
 _LOG_MAX_LINES = 200
@@ -1146,12 +1146,13 @@ class CommandBar(QDockWidget):
         if not features:
             self.log(_tr("! No features selected"))
             return
-        da = area_calculator(layer.crs(), QgsProject.instance())
-        # measureArea() units follow the CRS and ellipsoid, so on a geographic layer the raw sum is square degrees - normalize before calling it m2/ha, same as tools/area_readout does
+        # normalized to m² inside the helper, so a geographic layer's square degrees never reach format_area, and NaN comes back as None instead of printing
         try:
-            total = sum(da.measureArea(f.geometry()) for f in features)
-            sqm = da.convertAreaMeasurement(total, QgsUnitTypes.AreaUnit.AreaSquareMeters)
+            sqm = measure_area_sqm((f.geometry() for f in features),
+                                   layer.crs(), QgsProject.instance())
         except QgsCsException:
+            sqm = None
+        if sqm is None:
             self.log(_tr("! Cannot measure area in this layer's CRS"))
             return
         text = "{0}  ({1})".format(
