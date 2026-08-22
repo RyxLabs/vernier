@@ -38,11 +38,11 @@ ProgressCallback = Optional[Callable[[float], None]]
 
 
 class TopologyError:
-    """One finding. conflict is the geometry to highlight, feature_geometries are copies of the features involved for secondary highlighting, and value carries the measured quantity where there is one."""
+    """One finding. conflict is the geometry to highlight, feature_geometries are copies of the features involved for secondary highlighting, value carries the measured quantity where there is one, and location is an optional point marking the exact defect."""
 
     def __init__(self, kind: str, conflict: QgsGeometry, feature_ids,
                  description: str, value: float = 0.0, subtype: str = "",
-                 feature_geometries=None):
+                 feature_geometries=None, location=None):
         self.kind = kind
         self.conflict = conflict
         self.feature_ids = list(feature_ids)
@@ -50,6 +50,7 @@ class TopologyError:
         self.value = value
         self.subtype = subtype
         self.feature_geometries = list(feature_geometries or [])
+        self.location = location
 
 
 def _per_feature_progress(progress: ProgressCallback, layer: QgsVectorLayer):
@@ -57,15 +58,26 @@ def _per_feature_progress(progress: ProgressCallback, layer: QgsVectorLayer):
     if progress is None:
         return lambda handled: None
     span = max(layer.featureCount(), 1)
+    # the callback's own return value flows back out: duplicate_groups lets a caller stop the scan by returning False, which is the tool's Cancel button
     return lambda handled: progress(handled * 100.0 / span)
 
 
-def _geos_complaint(geometry: QgsGeometry) -> Optional[str]:
-    """First GEOS complaint, None when the geometry is fine."""
+def _geos_finding(geometry: QgsGeometry):
+    """First GEOS complaint as (message, finding), (None, None) when the geometry is fine. The finding comes back too because it carries where() - the one piece of an invalid finding that is not already visible on the map."""
     findings = geometry.validateGeometry(VALIDATOR_GEOS)
     if not findings:
-        return None
-    return findings[0].what() or _tr("invalid geometry")
+        return None, None
+    return findings[0].what() or _tr("invalid geometry"), findings[0]
+
+
+def invalid_location(geometry: QgsGeometry, finding) -> QgsGeometry:
+    """A point marking where the geometry breaks. GEOS usually reports one, and where it does not the fallback is pointOnSurface - guaranteed to sit inside the feature, unlike a centroid, which for a U or a ring lands in empty space and would send the user to the wrong place."""
+    if finding is not None and finding.hasWhere():
+        return QgsGeometry.fromPointXY(QgsPointXY(finding.where()))
+    surface = geometry.pointOnSurface()
+    if surface is not None and not surface.isNull():
+        return surface
+    return QgsGeometry(geometry.centroid())
 
 
 def check_validity(layer: QgsVectorLayer,
@@ -76,19 +88,23 @@ def check_validity(layer: QgsVectorLayer,
     for handled, feature in enumerate(layer.getFeatures(), start=1):
         geom = feature.geometry()
         if not geom.isNull():
-            complaint = _geos_complaint(geom)
+            complaint, finding = _geos_finding(geom)
             if complaint is not None:
                 errors.append(TopologyError(
                     KIND_INVALID, QgsGeometry(geom), [feature.id()],
                     _tr("feature {0}: {1}").format(feature.id(), complaint),
-                    feature_geometries=[QgsGeometry(geom)]))
+                    subtype=complaint,
+                    feature_geometries=[QgsGeometry(geom)],
+                    location=invalid_location(geom, finding)))
         report(handled)
     return errors
 
 
-def check_duplicates(layer: QgsVectorLayer,
-                     progress: ProgressCallback = None) -> List[TopologyError]:
-    """Features whose geometry is topologically equal to another's - a group of n gives n-1 errors. Clustering on exact bounding box first keeps the GEOS comparisons to pairs that could actually be equal, since equal geometries cover the same points and their extremes match bit for bit."""
+def duplicate_groups(layer: QgsVectorLayer,
+                     progress: ProgressCallback = None) -> List[List[tuple]]:
+    """Groups of two or more features sharing one geometry, each as [(feature id, geometry), ...]. The single definition of "duplicate" in the plugin: the topology check and the review-layer tool both build on this, so they can never report different counts for one layer.
+
+    Topological equality, not matching vertex lists - a re-digitised parcel carrying a redundant collinear vertex covers identical ground and belongs in the same group. Clustering on the exact bounding box first keeps the GEOS comparisons to pairs that could actually be equal, since equal geometries cover the same points and their extremes match bit for bit. A progress callback returning False stops the scan, and whatever was grouped so far comes back."""
     report = _per_feature_progress(progress, layer)
     clusters = {}
     for handled, feature in enumerate(layer.getFeatures(), start=1):
@@ -98,9 +114,10 @@ def check_duplicates(layer: QgsVectorLayer,
             key = (box.xMinimum(), box.yMinimum(),
                    box.xMaximum(), box.yMaximum())
             clusters.setdefault(key, []).append((feature.id(), geom))
-        report(handled)
+        if report(handled) is False:
+            break
 
-    errors = []
+    found = []
     for members in clusters.values():
         if len(members) < 2:
             continue
@@ -113,25 +130,66 @@ def check_duplicates(layer: QgsVectorLayer,
                     break
             else:
                 groups.append([(fid, geom)])
-        for group in groups:
-            first_id, first_geom = group[0]
-            for other_id, other_geom in group[1:]:
-                errors.append(TopologyError(
-                    KIND_DUPLICATE, QgsGeometry(first_geom),
-                    [first_id, other_id],
-                    _tr("features {0} and {1} are copies of the same "
-                        "geometry").format(first_id, other_id),
-                    feature_geometries=[QgsGeometry(first_geom),
-                                        QgsGeometry(other_geom)]))
+        found.extend(group for group in groups if len(group) > 1)
+    return found
+
+
+def check_duplicates(layer: QgsVectorLayer,
+                     progress: ProgressCallback = None) -> List[TopologyError]:
+    """Features whose geometry is topologically equal to another's - a group of n gives n-1 errors, every one of them naming the group's first feature as the keeper."""
+    errors = []
+    for group in duplicate_groups(layer, progress=progress):
+        first_id, first_geom = group[0]
+        for other_id, other_geom in group[1:]:
+            errors.append(TopologyError(
+                KIND_DUPLICATE, QgsGeometry(first_geom),
+                [first_id, other_id],
+                _tr("features {0} and {1} are copies of the same "
+                    "geometry").format(first_id, other_id),
+                feature_geometries=[QgsGeometry(first_geom),
+                                    QgsGeometry(other_geom)]))
     if progress:
         progress(100.0)
     return errors
 
 
+def duplicate_id_groups(errors) -> List[List[int]]:
+    """Feature ids per duplicate group, keeper first, in the order the groups were reported. check_duplicates emits a group of n as n-1 pairs that all name the same first feature, so grouping on feature_ids[0] rebuilds the group. Non-duplicate kinds are ignored, so a mixed run can be handed over whole."""
+    members = {}
+    order = []
+    for error in errors:
+        if error.kind != KIND_DUPLICATE or len(error.feature_ids) < 2:
+            continue
+        keeper = error.feature_ids[0]
+        if keeper not in members:
+            members[keeper] = []
+            order.append(keeper)
+        members[keeper].append(error.feature_ids[1])
+    return [[keeper] + members[keeper] for keeper in order]
+
+
 def redundant_duplicate_ids(errors) -> List[int]:
-    """The features to delete so exactly one member of every duplicate group survives. check_duplicates reports a group of n as n-1 pairs that all share the group's first feature, so feature_ids[0] is the keeper and feature_ids[1] is a distinct redundant copy every time - which makes the delete set a straight read of the second id. Non-duplicate kinds are ignored, so a mixed run can be handed over whole."""
-    return [error.feature_ids[1] for error in errors
-            if error.kind == KIND_DUPLICATE and len(error.feature_ids) > 1]
+    """The features to delete so exactly one member of every duplicate group survives - every id but the keeper's, across all groups. Says nothing about whether deleting them is safe; see split_duplicate_groups."""
+    return [fid for group in duplicate_id_groups(errors) for fid in group[1:]]
+
+
+def split_duplicate_groups(errors, attributes_by_id):
+    """(deletable ids, groups left alone), given {feature id: attribute values}.
+
+    Identical geometry does not make two features interchangeable. Copy-paste duplicates carry identical attributes and deleting one loses nothing, but two records claiming the same ground with different attributes is a data conflict - keeping whichever happened to be digitised first would silently discard the one that may be correct. Those groups come back untouched for a human to settle.
+
+    An id missing from the mapping counts as a conflict: failing to read a feature is not evidence that it is a copy."""
+    deletable = []
+    conflicted = []
+    for group in duplicate_id_groups(errors):
+        values = [attributes_by_id.get(fid) for fid in group]
+        if any(value is None for value in values):
+            conflicted.append(group)
+        elif any(value != values[0] for value in values[1:]):
+            conflicted.append(group)
+        else:
+            deletable.extend(group[1:])
+    return deletable, conflicted
 
 
 def check_overlaps(layer: QgsVectorLayer,

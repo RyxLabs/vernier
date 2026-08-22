@@ -23,6 +23,8 @@ SQUARE = "POLYGON((0 0, 2 0, 2 2, 0 2, 0 0))"
 SQUARE_ROTATED = "POLYGON((2 0, 2 2, 0 2, 0 0, 2 0))"
 SQUARE_FAR = "POLYGON((10 10, 11 10, 11 11, 10 11, 10 10))"
 SQUARE_OTHER = "POLYGON((5 5, 6 5, 6 6, 5 6, 5 5))"
+BOWTIE = "POLYGON((0 0, 2 2, 2 0, 0 2, 0 0))"
+HOLE_OUTSIDE_SHELL = ("POLYGON((0 0, 2 0, 2 2, 0 2, 0 0),(5 5, 6 5, 6 6, 5 6, 5 5))")
 
 QGS = None
 
@@ -47,6 +49,33 @@ def _layer(wkts, uri="Polygon?crs=EPSG:3844"):
     layer.dataProvider().addFeatures(features)
     layer.updateExtents()
     return layer
+
+
+class TestInvalidRows(unittest.TestCase):
+
+    def test_one_row_per_invalid_feature(self):
+        layer = _layer([BOWTIE, SQUARE, HOLE_OUTSIDE_SHELL])
+        errors = topology_service.check_validity(layer)
+        rows = topology_panel._invalid_rows(errors)
+        self.assertEqual(len(rows), 2)
+
+    def test_row_geometry_is_the_error_location_not_the_feature(self):
+        layer = _layer([BOWTIE])
+        rows = topology_panel._invalid_rows(
+            topology_service.check_validity(layer))
+        self.assertEqual(rows[0][0].type(),
+                         QgsWkbTypes.GeometryType.PointGeometry)
+
+    def test_row_carries_the_geos_complaint(self):
+        layer = _layer([BOWTIE])
+        rows = topology_panel._invalid_rows(
+            topology_service.check_validity(layer))
+        self.assertIn("elf-intersection", rows[0][1][0])
+
+    def test_clean_layer_yields_no_rows(self):
+        layer = _layer([SQUARE])
+        self.assertEqual(topology_panel._invalid_rows(
+            topology_service.check_validity(layer)), [])
 
 
 class TestDuplicateRows(unittest.TestCase):

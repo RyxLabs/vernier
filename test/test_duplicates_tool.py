@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from vernier.qt_compat import FIELD_STRING  # noqa: E402
+from vernier.services import topology_service  # noqa: E402
 from vernier.tools.duplicates_tool import find_duplicates  # noqa: E402
 
 SQUARE = "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))"
@@ -23,6 +24,8 @@ SQUARE_ROTATED = "POLYGON((1 1, 0 1, 0 0, 1 0, 1 1))"
 # same ring as SQUARE, opposite winding direction
 SQUARE_REVERSED = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
 TRIANGLE = "POLYGON((5 5, 6 5, 5 6, 5 5))"
+# same ground as SQUARE with a redundant vertex on one edge - a different vertex list, an identical point set
+SQUARE_COLLINEAR = "POLYGON((0 0, 0.5 0, 1 0, 1 1, 0 1, 0 0))"
 
 QGS = None
 
@@ -79,6 +82,21 @@ class TestFindDuplicates(unittest.TestCase):
         groups = find_duplicates(layer)
         self.assertEqual(len(groups), 1)
         self.assertEqual(_names(groups[0]), ["f0", "f1"])
+
+    def test_redundant_collinear_vertex_still_a_duplicate(self):
+        layer = _polygon_layer([SQUARE, SQUARE_COLLINEAR])
+        groups = find_duplicates(layer)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(_names(groups[0]), ["f0", "f1"])
+
+    def test_agrees_with_the_topology_validator(self):
+        # one definition of "duplicate" in the plugin: the panel and the button must never report different counts for the same layer
+        layer = _polygon_layer([SQUARE, SQUARE_COLLINEAR, SQUARE_ROTATED,
+                                TRIANGLE, TRIANGLE])
+        groups = find_duplicates(layer)
+        errors = topology_service.check_duplicates(layer)
+        extra_copies = sum(len(g) - 1 for g in groups)
+        self.assertEqual(extra_copies, len(errors))
 
     def test_distinct_polygons_not_flagged(self):
         layer = _polygon_layer([SQUARE, TRIANGLE])

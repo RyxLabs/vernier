@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText: 2026 RYXLAB SOFT TECH SRL (RyxLabs)
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Topology Validator - runs the five topology_service checks and lists the findings in a tree whose rows zoom and highlight, plus styled memory error layers for the duplicate, overlap, gap and vertex classes."""
+"""Topology Validator - runs the five topology_service checks and lists the findings in a tree whose rows zoom and highlight, plus a styled memory error layer for every finding class."""
 
 # owns canvas rubber bands, so the plugin has to call cleanup() from unload()
 
@@ -14,10 +14,11 @@ from qgis.PyQt.QtWidgets import (  # type: ignore
 )
 from qgis.core import (  # type: ignore
     Qgis, QgsCategorizedSymbolRenderer, QgsCoordinateTransform,
-    QgsCsException, QgsFeature, QgsField, QgsFillSymbol, QgsGeometry,
-    QgsLineSymbol, QgsMapLayerProxyModel, QgsMarkerSymbol, QgsMessageLog,
-    QgsProject, QgsRectangle, QgsRendererCategory, QgsSingleSymbolRenderer,
-    QgsUnitTypes, QgsVectorLayer, QgsWkbTypes,
+    QgsCsException, QgsFeature, QgsFeatureRequest, QgsField, QgsFillSymbol,
+    QgsGeometry, QgsMapLayerProxyModel, QgsMarkerSymbol, QgsMessageLog,
+    QgsProject,
+    QgsRectangle, QgsRendererCategory, QgsSingleSymbolRenderer, QgsUnitTypes,
+    QgsVectorLayer, QgsWkbTypes,
 )
 from qgis.gui import QgsMapLayerComboBox, QgsRubberBand  # type: ignore
 
@@ -25,7 +26,7 @@ from .qt_compat import (
     DELETE_FEATURES, FIELD_DOUBLE, FIELD_LONGLONG, FIELD_STRING,
 )
 from .i18n import tr as _tr
-from .services import settings_service, topology_service
+from .services import error_styles, settings_service, topology_service
 
 # (key, label, polygon_only) in display and run order, labels translated at consumption
 _CHECKS = (
@@ -77,6 +78,18 @@ def _vertex_renderer():
     return QgsCategorizedSymbolRenderer("issue", categories)
 
 
+def _invalid_rows(errors):
+    """(point, attributes) per invalid feature, as (complaint, feature id). The check_validity report is one error per feature, so no grouping is needed."""
+    rows = []
+    for error in errors:
+        if error.location is None or error.location.isNull():
+            continue
+        rows.append((QgsGeometry(error.location),
+                     [error.subtype or error.description,
+                      error.feature_ids[0]]))
+    return rows
+
+
 def _duplicate_rows(errors):
     """(geometry, attributes) per duplicate group, as (kind, keeper id, copies). check_duplicates reports a group of n as n-1 pairs that all name the same keeper, so grouping on that id rebuilds the group. One row per group rather than per feature is deliberate: every copy in a group shares one footprint, so a row each would overprint the same translucent fill and shade a big group darker than a small one - the count goes in an attribute instead of into the ink."""
     groups = {}
@@ -100,25 +113,6 @@ def _duplicate_rows(errors):
 def _duplicate_shape(geometry):
     """Memory layer type string for the duplicates layer. Multi, so a single and a multi part of the same family both land - unlike the other checks this one also runs on point and line layers."""
     return QgsWkbTypes.displayString(QgsWkbTypes.multiType(geometry.wkbType()))
-
-
-def _duplicate_renderer(geometry):
-    """Violet in whichever symbol family the layer needs. Distinct from the overlap crimson, because a duplicate marks a whole feature rather than a shared sliver."""
-    kind = geometry.type()
-    if kind == QgsWkbTypes.GeometryType.PolygonGeometry:
-        return _polygon_renderer("123,44,191,110", "#5a189a")
-    if kind == QgsWkbTypes.GeometryType.LineGeometry:
-        return QgsSingleSymbolRenderer(QgsLineSymbol.createSimple({
-            "color": "#7b2cbf",
-            "width": "1.2",
-        }))
-    return QgsSingleSymbolRenderer(QgsMarkerSymbol.createSimple({
-        "name": "circle",
-        "color": "123,44,191,150",
-        "size": "3.2",
-        "outline_color": "#5a189a",
-        "outline_width": "0.4",
-    }))
 
 
 def _publish_error_layer(crs, shape, name, schema, rows, renderer):
@@ -151,9 +145,21 @@ def _publish_error_layer(crs, shape, name, schema, rows, renderer):
 
 
 def build_error_layers(errors, crs):
-    """Publish the error classes as styled memory layers, replacing whatever the previous run left. Returns what it made. Invalid findings get a rubber-band highlight instead of a layer, so every class but that one publishes."""
+    """Publish the error classes as styled memory layers, replacing whatever the previous run left. Returns what it made. Every class publishes: the derived ones (invalid locations, overlap slivers, gaps, vertex points) carry geometry you cannot see in the source layer, and duplicates carry the footprint itself because there is nothing else to show."""
     _discard_previous_results()
     published = []
+
+    invalid = [e for e in errors
+               if e.kind == topology_service.KIND_INVALID]
+    if invalid:
+        rows = _invalid_rows(invalid)
+        if rows:
+            published.append(_publish_error_layer(
+                crs, "Point", _tr("Topology invalid geometries"),
+                [QgsField("issue", FIELD_STRING),
+                 QgsField("feature", FIELD_LONGLONG)],
+                rows,
+                error_styles.invalid_renderer()))
 
     duplicates = [e for e in errors
                   if e.kind == topology_service.KIND_DUPLICATE]
@@ -167,7 +173,7 @@ def build_error_layers(errors, crs):
                  QgsField("keeper", FIELD_LONGLONG),
                  QgsField("copies", FIELD_LONGLONG)],
                 rows,
-                _duplicate_renderer(rows[0][0])))
+                error_styles.duplicate_renderer(rows[0][0].type())))
 
     overlaps = [e for e in errors
                 if e.kind == topology_service.KIND_OVERLAP]
@@ -565,8 +571,24 @@ class TopologyPanel(QDockWidget):
             self.run_button.setEnabled(True)
 
     def _delete_redundant_duplicates(self, layer):
-        """Stage the redundant copies in the layer's edit buffer, one keeper per group, and return how many went. Nothing is committed - command_bar's toggle comment has the reasoning: a commitChanges() here would bake in whatever else the user had open and throw the undo stack away."""
-        ids = topology_service.redundant_duplicate_ids(self._errors)
+        """Stage the redundant copies in the layer's edit buffer, one keeper per group, and return how many went. Groups whose members disagree on attributes are reported and skipped rather than resolved by feature id. Nothing is committed - command_bar's toggle comment has the reasoning: a commitChanges() here would bake in whatever else the user had open and throw the undo stack away."""
+        groups = topology_service.duplicate_id_groups(self._errors)
+        if not groups:
+            return 0
+        wanted = [fid for group in groups for fid in group]
+        attributes = {feature.id(): feature.attributes()
+                      for feature in layer.getFeatures(
+                          QgsFeatureRequest().setFilterFids(wanted))}
+        ids, conflicted = topology_service.split_duplicate_groups(
+            self._errors, attributes)
+        if conflicted:
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("{0} duplicate group(s) hold the same geometry with "
+                        "different attributes and were left alone - the "
+                        "copies are not interchangeable.").format(
+                            len(conflicted)),
+                level=Qgis.MessageLevel.Warning, duration=10)
         if not ids:
             return 0
         if not layer.dataProvider().capabilities() & DELETE_FEATURES:
