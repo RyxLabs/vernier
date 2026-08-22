@@ -8,7 +8,7 @@ import sys
 import unittest
 
 from qgis.core import (  # type: ignore
-    QgsApplication, QgsFeature, QgsGeometry, QgsVectorLayer,
+    QgsApplication, QgsFeature, QgsGeometry, QgsVectorLayer, QgsWkbTypes,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
@@ -32,6 +32,8 @@ U_SHAPE = "POLYGON((0 0, 10 0, 10 10, 8 10, 8 2, 2 2, 2 10, 0 10, 0 0))"
 CAP = "POLYGON((0 2.5, 10 2.5, 10 10, 0 10, 0 2.5))"
 
 BOWTIE = "POLYGON((0 0, 2 2, 2 0, 0 2, 0 0))"  # self-intersecting
+HOLE_OUTSIDE_SHELL = ("POLYGON((0 0, 2 0, 2 2, 0 2, 0 0),(5 5, 6 5, 6 6, 5 6, 5 5))")
+RING_SELF_TOUCH = "POLYGON((0 0, 4 0, 4 4, 0 4, 0 0, 2 2, 2 2, 0 0))"
 
 # vertex triage fixtures (default tolerance 0.005, short segment < 0.05)
 DUP_VERTEX = "POLYGON((0 0, 1 0, 1 0, 1 1, 0 1, 0 0))"
@@ -107,6 +109,122 @@ class TestDuplicates(unittest.TestCase):
         self.assertAlmostEqual(seen[-1], 100.0)
         # ticks flow while the layer streams by, not one jump at the end
         self.assertLess(seen[0], 100.0)
+
+
+class TestInvalidLocations(unittest.TestCase):
+    """GEOS reports where a geometry breaks, and that point is the only part of an invalid finding you cannot already see on the map."""
+
+    def test_error_carries_a_point_location(self):
+        layer = _layer([BOWTIE])
+        error = topology_service.check_validity(layer)[0]
+        self.assertIsNotNone(error.location)
+        self.assertFalse(error.location.isNull())
+        self.assertEqual(error.location.type(),
+                         QgsWkbTypes.GeometryType.PointGeometry)
+
+    def test_location_marks_the_self_intersection(self):
+        # the bowtie crosses itself at the middle of its own span
+        layer = _layer([BOWTIE])
+        error = topology_service.check_validity(layer)[0]
+        point = error.location.asPoint()
+        self.assertAlmostEqual(point.x(), 1.0, places=6)
+        self.assertAlmostEqual(point.y(), 1.0, places=6)
+
+    def test_every_complaint_kind_gets_a_location(self):
+        layer = _layer([BOWTIE, HOLE_OUTSIDE_SHELL, RING_SELF_TOUCH])
+        errors = topology_service.check_validity(layer)
+        self.assertEqual(len(errors), 3)
+        for error in errors:
+            self.assertIsNotNone(error.location, error.description)
+            self.assertFalse(error.location.isNull(), error.description)
+
+    def test_location_falls_back_inside_the_feature(self):
+        # a complaint without a reported point still has to land somewhere usable, and pointOnSurface is inside the polygon where a centroid of a concave shape would not be
+        geometry = QgsGeometry.fromWkt(U_SHAPE)
+        fallback = topology_service.invalid_location(geometry, None)
+        self.assertFalse(fallback.isNull())
+        self.assertTrue(geometry.intersects(fallback))
+
+    def test_conflict_still_holds_the_whole_feature(self):
+        # the location is an addition, not a replacement: clicking a row must still frame and outline the offending feature
+        layer = _layer([BOWTIE])
+        error = topology_service.check_validity(layer)[0]
+        self.assertEqual(error.conflict.type(),
+                         QgsWkbTypes.GeometryType.PolygonGeometry)
+
+
+class TestSplitDuplicateGroups(unittest.TestCase):
+    """Identical geometry does not mean interchangeable features. Two records claiming the same ground with different attributes is a data conflict a human has to settle, not something to resolve by keeping whichever happened to be digitised first."""
+
+    def _errors(self, wkts):
+        return topology_service.check_duplicates(_layer(wkts))
+
+    def test_matching_attributes_are_safe_to_delete(self):
+        errors = self._errors([SQUARE, SQUARE])
+        ids = topology_service.redundant_duplicate_ids(errors)
+        attributes = {1: ["A", 10], 2: ["A", 10]}
+        safe, conflicted = topology_service.split_duplicate_groups(
+            errors, attributes)
+        self.assertEqual(safe, ids)
+        self.assertEqual(conflicted, [])
+
+    def test_differing_attributes_are_left_alone(self):
+        errors = self._errors([SQUARE, SQUARE])
+        attributes = {1: ["parcel-A", 10], 2: ["parcel-B", 10]}
+        safe, conflicted = topology_service.split_duplicate_groups(
+            errors, attributes)
+        self.assertEqual(safe, [])
+        self.assertEqual(len(conflicted), 1)
+        self.assertEqual(sorted(conflicted[0]), [1, 2])
+
+    def test_only_the_conflicting_group_is_spared(self):
+        # a clean group and a conflicted one in the same run
+        errors = self._errors([SQUARE, SQUARE, SQUARE_FAR, SQUARE_FAR])
+        attributes = {1: ["A"], 2: ["A"], 3: ["X"], 4: ["Y"]}
+        safe, conflicted = topology_service.split_duplicate_groups(
+            errors, attributes)
+        self.assertEqual(safe, [2])
+        self.assertEqual(len(conflicted), 1)
+        self.assertEqual(sorted(conflicted[0]), [3, 4])
+
+    def test_unknown_attributes_count_as_a_conflict(self):
+        # a feature that could not be read is not evidence that it is a copy
+        errors = self._errors([SQUARE, SQUARE])
+        safe, conflicted = topology_service.split_duplicate_groups(
+            errors, {1: ["A"]})
+        self.assertEqual(safe, [])
+        self.assertEqual(len(conflicted), 1)
+
+    def test_a_group_of_three_needs_all_three_to_match(self):
+        errors = self._errors([SQUARE, SQUARE, SQUARE])
+        attributes = {1: ["A"], 2: ["A"], 3: ["different"]}
+        safe, conflicted = topology_service.split_duplicate_groups(
+            errors, attributes)
+        self.assertEqual(safe, [])
+        self.assertEqual(len(conflicted), 1)
+
+    def test_no_duplicates_means_nothing_to_split(self):
+        errors = self._errors([SQUARE, SQUARE_FAR])
+        self.assertEqual(topology_service.split_duplicate_groups(errors, {}),
+                         ([], []))
+
+
+class TestDuplicateIdGroups(unittest.TestCase):
+
+    def test_keeper_comes_first(self):
+        layer = _layer([SQUARE, SQUARE, SQUARE])
+        ids = [f.id() for f in layer.getFeatures()]
+        groups = topology_service.duplicate_id_groups(
+            topology_service.check_duplicates(layer))
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0][0], ids[0])
+        self.assertEqual(sorted(groups[0]), sorted(ids))
+
+    def test_one_entry_per_group(self):
+        layer = _layer([SQUARE, SQUARE, SQUARE_FAR, SQUARE_FAR])
+        groups = topology_service.duplicate_id_groups(
+            topology_service.check_duplicates(layer))
+        self.assertEqual(len(groups), 2)
 
 
 class TestRedundantDuplicateIds(unittest.TestCase):
