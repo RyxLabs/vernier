@@ -128,6 +128,12 @@ def check_duplicates(layer: QgsVectorLayer,
     return errors
 
 
+def redundant_duplicate_ids(errors) -> List[int]:
+    """The features to delete so exactly one member of every duplicate group survives. check_duplicates reports a group of n as n-1 pairs that all share the group's first feature, so feature_ids[0] is the keeper and feature_ids[1] is a distinct redundant copy every time - which makes the delete set a straight read of the second id. Non-duplicate kinds are ignored, so a mixed run can be handed over whole."""
+    return [error.feature_ids[1] for error in errors
+            if error.kind == KIND_DUPLICATE and len(error.feature_ids) > 1]
+
+
 def check_overlaps(layer: QgsVectorLayer,
                    progress: ProgressCallback = None) -> List[TopologyError]:
     """Pairs of polygons whose interiors share area - partial overlap and full containment both count, touching doesn't. Identical pairs are left to check_duplicates so one mistake isn't reported twice, and invalid geometries to check_validity."""
