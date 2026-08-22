@@ -109,6 +109,53 @@ class TestDuplicates(unittest.TestCase):
         self.assertLess(seen[0], 100.0)
 
 
+class TestRedundantDuplicateIds(unittest.TestCase):
+    """The delete set for the topology panel: every duplicate except one keeper per group."""
+
+    def test_pair_yields_one_id(self):
+        layer = _layer([SQUARE, SQUARE])
+        ids = [f.id() for f in layer.getFeatures()]
+        errors = topology_service.check_duplicates(layer)
+        self.assertEqual(topology_service.redundant_duplicate_ids(errors),
+                         [ids[1]])
+
+    def test_group_of_three_keeps_exactly_one(self):
+        layer = _layer([SQUARE, SQUARE, SQUARE])
+        ids = [f.id() for f in layer.getFeatures()]
+        errors = topology_service.check_duplicates(layer)
+        redundant = topology_service.redundant_duplicate_ids(errors)
+        self.assertEqual(len(redundant), 2)
+        self.assertNotIn(ids[0], redundant)  # the keeper survives
+        self.assertEqual(sorted(redundant), sorted(ids[1:]))
+
+    def test_two_groups_each_keep_one(self):
+        layer = _layer([SQUARE, SQUARE, SQUARE_FAR, SQUARE_FAR])
+        ids = [f.id() for f in layer.getFeatures()]
+        errors = topology_service.check_duplicates(layer)
+        redundant = topology_service.redundant_duplicate_ids(errors)
+        self.assertEqual(sorted(redundant), sorted([ids[1], ids[3]]))
+
+    def test_clean_layer_yields_nothing(self):
+        layer = _layer([SQUARE, SQUARE_FAR])
+        errors = topology_service.check_duplicates(layer)
+        self.assertEqual(topology_service.redundant_duplicate_ids(errors), [])
+
+    def test_other_error_kinds_ignored(self):
+        # a mixed run hands over every kind at once, and only duplicates may be deleted
+        layer = _layer([SQUARE, BOWTIE])
+        errors = (topology_service.check_validity(layer)
+                  + topology_service.check_overlaps(layer))
+        self.assertEqual(topology_service.redundant_duplicate_ids(errors), [])
+
+    def test_no_id_repeats_when_a_group_spans_several_errors(self):
+        # a group of n reports n-1 pairs all sharing the keeper, so a naive flatten of feature_ids would delete the keeper and double-count
+        layer = _layer([SQUARE, SQUARE, SQUARE, SQUARE])
+        errors = topology_service.check_duplicates(layer)
+        redundant = topology_service.redundant_duplicate_ids(errors)
+        self.assertEqual(len(redundant), len(set(redundant)))
+        self.assertEqual(len(redundant), 3)
+
+
 class TestOverlaps(unittest.TestCase):
 
     def test_overlap_found_with_area(self):
