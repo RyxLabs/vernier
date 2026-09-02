@@ -4,7 +4,7 @@
 """Constants that resolve across every supported QGIS build, Qt5 and Qt6 alike."""
 
 from qgis.PyQt.QtCore import QVariant  # type: ignore
-from qgis.core import QgsGeometry  # type: ignore
+from qgis.core import QgsGeometry, QgsVectorDataProvider  # type: ignore
 
 # PyQt6 dropped the QVariant.Type enum. QgsField only grew its QMetaType overload in 3.38, which is also the first Qt6 build, so the two branches never overlap and one import-time probe covers 3.28 through 4.x
 try:  # Qt5 (QGIS 3.28 - 3.4x)
@@ -32,5 +32,17 @@ def _validator_geos(source):
 
 VALIDATOR_GEOS = _validator_geos(QgsGeometry)
 
-__all__ = ["FIELD_DOUBLE", "FIELD_INT", "FIELD_LONGLONG", "FIELD_STRING",
-           "VALIDATOR_GEOS"]
+
+def _delete_features_capability(source):
+    """The DeleteFeatures provider capability. Qt6 builds scope it under Capability, Qt5 ones hang it off the class, and 3.40 answers to both - so neither spelling gets pinned as an attribute access."""
+    scope = getattr(source, "Capability", None)
+    found = getattr(scope, "DeleteFeatures", None)
+    if found is None:
+        found = getattr(source, "DeleteFeatures")
+    return found
+
+
+DELETE_FEATURES = _delete_features_capability(QgsVectorDataProvider)
+
+__all__ = ["DELETE_FEATURES", "FIELD_DOUBLE", "FIELD_INT", "FIELD_LONGLONG",
+           "FIELD_STRING", "VALIDATOR_GEOS"]

@@ -6,37 +6,35 @@
 from qgis.PyQt.QtCore import Qt  # type: ignore
 from qgis.PyQt.QtWidgets import QProgressDialog  # type: ignore
 from qgis.core import (  # type: ignore
-    Qgis, QgsFeature, QgsField, QgsGeometry, QgsProject, QgsVectorLayer,
+    Qgis, QgsFeature, QgsFeatureRequest, QgsField, QgsProject, QgsVectorLayer,
     QgsWkbTypes,
 )
 
 from ..qt_compat import FIELD_INT
 from ..i18n import tr as _tr
-
-
-def _normalized_wkb(geometry: QgsGeometry) -> bytes:
-    # normalize() mutates, so hash a copy. after it a rotated vertex order and a reversed ring give byte-identical WKB
-    geom = QgsGeometry(geometry)
-    geom.normalize()
-    return bytes(geom.asWkb())
+from ..services import error_styles, topology_service
 
 
 def find_duplicates(layer, progress=None) -> list:
-    """Group the features by identical normalized geometry, two or more per group. Invalid geometries take part on purpose - duplicates of broken geometries are still worth reviewing. progress gets 0-100 once per feature and returning False from it stops the scan."""
-    by_wkb = {}
-    total = layer.featureCount()
-    if total < 1:
-        total = 1  # unknown count, the bar just runs to the end
-    done = 0
-    for feature in layer.getFeatures():
-        geom = feature.geometry()
-        if geom is not None and not geom.isEmpty():
-            by_wkb.setdefault(_normalized_wkb(geom), []).append(feature)
-        done += 1
-        if progress is not None:
-            if progress(min(100, int(done * 100 / total))) is False:
-                break
-    return [group for group in by_wkb.values() if len(group) > 1]
+    """Groups of features sharing one geometry, two or more per group, as whole QgsFeatures so the review layer can carry their attributes. Detection is topology_service.duplicate_groups - one definition of "duplicate" for the plugin, so this button and the Topology Validator cannot report different counts for the same layer. Invalid geometries take part on purpose: duplicates of broken geometries are still worth reviewing. progress gets 0-100 once per feature and returning False from it stops the scan."""
+    def report(percent):
+        if progress is None:
+            return None
+        return progress(min(100, int(percent)))
+
+    groups = topology_service.duplicate_groups(layer, progress=report)
+    if not groups:
+        return []
+    # the grouping pass keeps geometries only, and the review layer needs the attributes too, so the members come back in one request keyed by id
+    wanted = [fid for group in groups for fid, _geom in group]
+    by_id = {feature.id(): feature for feature in layer.getFeatures(
+        QgsFeatureRequest().setFilterFids(wanted))}
+    resolved = []
+    for group in groups:
+        members = [by_id[fid] for fid, _geom in group if fid in by_id]
+        if len(members) > 1:
+            resolved.append(members)
+    return resolved
 
 
 def run(iface):
@@ -114,6 +112,8 @@ def run(iface):
             copies.append(copy)
     ok, added = provider.addFeatures(copies)
     review.updateExtents()
+    # same violet the Topology Validator marks duplicates with, so the two views of one problem read as one thing
+    review.setRenderer(error_styles.duplicate_renderer(review.geometryType()))
     QgsProject.instance().addMapLayer(review)
 
     if not ok or len(added) != len(copies):

@@ -46,7 +46,7 @@ changelog=0.9.0:
     * Plus: quick symbology with reusable templates, versioned autosave backups with restore browser, live area readout for selected polygons, one-click geoprocessing
 
 tags=vector,editing,digitizing,cad,autocad,bricscad,zwcad,command line,snapping,topology,validation,split,parcel,centerline,dxf,dwg,kmz,kml,export,import,join,spatial join,backup,autosave,symbology
-homepage=https://ryxlabs.dev
+homepage=https://ryxlabs.dev/qgis
 repository=https://github.com/ryxlabs/vernier
 tracker=https://github.com/ryxlabs/vernier/issues
 icon=icons/vernier.svg
