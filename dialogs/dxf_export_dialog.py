@@ -18,6 +18,7 @@ from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes  # type: ignore
 from qgis.gui import QgsColorButton  # type: ignore
 
 from ..services import deps, label_memory
+from . import _ui_helpers
 from .base_dialog import BaseDialog
 
 # layer table columns
@@ -86,22 +87,13 @@ class DxfExportDialog(BaseDialog):
         self.label_status.setWordWrap(True)
         table_layout.addWidget(self.label_status)
 
-        sel_row = QHBoxLayout()
-        btn_all = QPushButton(self.tr("All"))
-        btn_all.setMaximumWidth(70)
-        btn_all.clicked.connect(lambda: self._set_all_checked(True))
-        btn_none = QPushButton(self.tr("None"))
-        btn_none.setMaximumWidth(70)
-        btn_none.clicked.connect(lambda: self._set_all_checked(False))
         btn_visible = QPushButton(self.tr("Visible only"))
-        btn_visible.setMaximumWidth(100)
         btn_visible.clicked.connect(self._select_visible_only)
-        sel_row.addWidget(btn_all)
-        sel_row.addWidget(btn_none)
-        sel_row.addWidget(btn_visible)
-        sel_row.addStretch()
+        sel_row, _all_btn, _none_btn = _ui_helpers.make_select_row(
+            lambda: self._set_all_checked(True),
+            lambda: self._set_all_checked(False),
+            (btn_visible,))
         btn_reset = QPushButton(self.tr("Reset style"))
-        btn_reset.setMaximumWidth(130)
         btn_reset.clicked.connect(self._reset_current_layer)
         sel_row.addWidget(btn_reset)
         table_layout.addLayout(sel_row)
@@ -139,6 +131,11 @@ class DxfExportDialog(BaseDialog):
         th.resizeSection(2, 70)
         self.field_tree.itemChanged.connect(self._on_field_item_changed)
         label_layout.addWidget(self.field_tree)
+
+        field_sel_row, _fld_all, _fld_none = _ui_helpers.make_select_row(
+            lambda: self._set_all_fields_checked(True),
+            lambda: self._set_all_fields_checked(False))
+        label_layout.addLayout(field_sel_row)
 
         opts_row1 = QHBoxLayout()
         opts_row1.addWidget(QLabel(self.tr("Separator:")))
@@ -323,21 +320,11 @@ class DxfExportDialog(BaseDialog):
         self.table.setMaximumHeight(total)
 
     def _center_widget(self, row, col, widget):
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.addWidget(widget)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.table.setCellWidget(row, col, container)
+        _ui_helpers.center_table_widget(self.table, row, col, widget)
 
     def _get_checkbox(self, row, col):
         """Pull a QCheckBox back out of a centered cell widget."""
-        container = self.table.cellWidget(row, col)
-        if container:
-            layout = container.layout()
-            if layout and layout.count() > 0:
-                return layout.itemAt(0).widget()
-        return None
+        return _ui_helpers.centered_table_widget(self.table, row, col)
 
     def _cache_sample_values(self, layer):
         """First feature's values, used as sample data in the Example column."""
@@ -360,6 +347,10 @@ class DxfExportDialog(BaseDialog):
             chk = self._get_checkbox(row, COL_EXPORT)
             if chk:
                 chk.setChecked(checked)
+
+    def _set_all_fields_checked(self, checked):
+        _ui_helpers.set_all_check_states(self.field_tree, checked)
+        self._refresh_label_status()
 
     def _select_visible_only(self):
         """Check only the layers currently visible in QGIS."""
@@ -669,18 +660,9 @@ class DxfExportDialog(BaseDialog):
         self.split_values_list.setMinimumHeight(80)
         val_layout.addWidget(self.split_values_list)
 
-        val_btn_row = QHBoxLayout()
-        btn_all_vals = QPushButton(self.tr("All"))
-        btn_all_vals.setMaximumWidth(70)
-        btn_all_vals.clicked.connect(
-            lambda: self._set_all_values_checked(True))
-        btn_no_vals = QPushButton(self.tr("None"))
-        btn_no_vals.setMaximumWidth(70)
-        btn_no_vals.clicked.connect(
+        val_btn_row, _val_all, _val_none = _ui_helpers.make_select_row(
+            lambda: self._set_all_values_checked(True),
             lambda: self._set_all_values_checked(False))
-        val_btn_row.addWidget(btn_all_vals)
-        val_btn_row.addWidget(btn_no_vals)
-        val_btn_row.addStretch()
         val_layout.addLayout(val_btn_row)
         val_group.setLayout(val_layout)
         layout.addWidget(val_group)

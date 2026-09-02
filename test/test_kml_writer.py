@@ -12,8 +12,11 @@ import zipfile
 
 from qgis.PyQt.QtGui import QColor  # type: ignore
 from qgis.core import (  # type: ignore
-    QgsApplication, QgsFeature, QgsField, QgsFields, QgsGeometry,
-    QgsProject, QgsVectorLayer, QgsWkbTypes,
+    QgsApplication, QgsCategorizedSymbolRenderer, QgsFeature, QgsField,
+    QgsFields, QgsFillSymbol, QgsGeometry, QgsLineSymbol,
+    QgsPalLayerSettings, QgsProject, QgsProperty, QgsRendererCategory,
+    QgsSingleSymbolRenderer, QgsTextBufferSettings, QgsTextFormat,
+    QgsVectorLayer, QgsVectorLayerSimpleLabeling, QgsWkbTypes,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
@@ -169,17 +172,254 @@ class TestLayerToKml(unittest.TestCase):
         self.assertEqual(count, 1)
         # label appears on the polygon placemark and on the label point
         self.assertEqual(kml.count("<name>No. 7</name>"), 2)
-        self.assertIn("#lbl", kml)
+        # invisible-icon style on the companion point, label in default white
+        self.assertIn("<IconStyle><scale>0</scale></IconStyle>", kml)
+        self.assertIn("<LabelStyle><scale>1.0</scale>", kml)
         self.assertIn("<fill>0</fill>", kml)
         self.assertIn("ffff0000", kml)
+
+    def test_styles_are_inline_not_referenced(self):
+        # phone viewers ignore styleUrl references to shared styles, so every placemark carries its own <Style>
+        layer = self._polygon_layer()
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [{"field": "nr", "prefix": "", "suffix": ""}],
+            QgsProject.instance().transformContext(), "ffff0000")
+        self.assertNotIn("styleUrl", kml)
+        self.assertEqual(kml.count("<Placemark>"), kml.count("<Style id="))
 
     def test_no_labels_no_companion_point(self):
         layer = self._polygon_layer()
         kml, count = kml_writer.layer_to_kml(
             layer, [], QgsProject.instance().transformContext())
         self.assertEqual(count, 1)
-        self.assertNotIn("#lbl", kml)
+        self.assertNotIn("lbl", kml)
         self.assertEqual(kml.count("<Placemark>"), 1)
+
+
+def _polygon_fixture(count=1, fields="field=nr:string"):
+    layer = QgsVectorLayer(
+        f"Polygon?crs=EPSG:4326&{fields}", "fixture", "memory")
+    feats = []
+    for i in range(count):
+        f = QgsFeature(layer.fields())
+        x = i * 10
+        f.setGeometry(QgsGeometry.fromWkt(
+            f"POLYGON(({x} 0, {x + 1} 0, {x + 1} 1, {x} 1, {x} 0))"))
+        f.setAttributes([str(i)] + [None] * (len(layer.fields()) - 1))
+        feats.append(f)
+    layer.dataProvider().addFeatures(feats)
+    return layer
+
+
+class TestSymbologyStyles(unittest.TestCase):
+    """color_abgr=None derives the KML styles from the layer's renderer, feature by feature."""
+
+    def test_fill_and_stroke_follow_the_symbol(self):
+        layer = _polygon_fixture()
+        layer.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({
+            "color": "255,0,0,128",
+            "outline_color": "0,255,0,255",
+            "outline_width": "0.5",
+        })))
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertEqual(count, 1)
+        # fill keeps its alpha, the stroke is its own color, 0.5 mm -> 1.9 px
+        self.assertIn("<PolyStyle><color>800000ff</color><fill>1</fill>", kml)
+        self.assertIn(
+            "<LineStyle><color>ff00ff00</color><width>1.9</width>", kml)
+
+    def test_no_brush_fill_turns_fill_off(self):
+        layer = _polygon_fixture()
+        layer.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({
+            "color": "255,0,0,255",
+            "style": "no",
+            "outline_color": "0,0,0,255",
+        })))
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertIn("<fill>0</fill>", kml)
+
+    def test_categorized_layer_keeps_per_feature_colors(self):
+        layer = _polygon_fixture(count=3)
+
+        def category(value, color):
+            return QgsRendererCategory(value, QgsFillSymbol.createSimple({
+                "color": color, "outline_color": color}), value)
+
+        layer.setRenderer(QgsCategorizedSymbolRenderer("nr", [
+            category("0", "255,0,0,255"),
+            category("1", "0,0,255,255"),
+            category("2", "255,0,0,255"),
+        ]))
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertEqual(count, 3)
+        # one inline style per placemark, each carrying its category's color
+        self.assertEqual(kml.count("<Style id="), 3)
+        self.assertEqual(kml.count("<Placemark>"), 3)
+        self.assertEqual(kml.count("<LineStyle><color>ff0000ff</color>"), 2)
+        self.assertEqual(kml.count("<LineStyle><color>ffff0000</color>"), 1)
+
+    def test_flat_color_override_wins_over_the_renderer(self):
+        layer = _polygon_fixture()
+        layer.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({
+            "color": "0,255,0,255", "outline_color": "0,255,0,255"})))
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(), "ffff0000")
+        self.assertIn("ffff0000", kml)
+        self.assertNotIn("ff00ff00", kml)
+
+
+class TestDataDefinedColors(unittest.TestCase):
+    """One symbol, per-feature color expression - how the DXF import styles multi-color CAD layers. The export must follow the expression, not the static base color."""
+
+    def test_line_stroke_expression_exports_per_feature(self):
+        layer = QgsVectorLayer(
+            "LineString?crs=EPSG:4326&field=culoare:string", "cad", "memory")
+        feats = []
+        for i, color in enumerate(["#ff0000", "#0000ff"]):
+            f = QgsFeature(layer.fields())
+            f.setGeometry(QgsGeometry.fromWkt(
+                f"LINESTRING(0 {i}, 1 {i})"))
+            f.setAttributes([color])
+            feats.append(f)
+        layer.dataProvider().addFeatures(feats)
+
+        symbol = QgsLineSymbol.createSimple(
+            {"color": "255,0,0,255", "width": "0.25"})
+        symbol.symbolLayer(0).setDataDefinedProperty(
+            kml_writer._PROP_STROKE_COLOR,
+            QgsProperty.fromExpression('"culoare"'))
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertEqual(count, 2)
+        self.assertEqual(kml.count("<Style id="), 2)
+        self.assertIn("ff0000ff", kml)
+        self.assertIn("ffff0000", kml)
+
+    def test_polygon_outline_expression_exports_per_feature(self):
+        layer = _polygon_fixture(count=2, fields="field=nr:string")
+        symbol = QgsFillSymbol.createSimple({
+            "color": "0,0,0,30", "outline_color": "255,0,0,255"})
+        symbol.symbolLayer(0).setDataDefinedProperty(
+            kml_writer._PROP_STROKE_COLOR,
+            QgsProperty.fromExpression(
+                "CASE WHEN \"nr\" = '0' THEN '#00ff00' ELSE '#0000ff' END"))
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertEqual(count, 2)
+        self.assertIn("<LineStyle><color>ff00ff00</color>", kml)
+        self.assertIn("<LineStyle><color>ffff0000</color>", kml)
+
+
+class TestQgisLabels(unittest.TestCase):
+    """qgis_labels=True labels the export with the layer's own labeling - text and color."""
+
+    def _labeled_layer(self, expression, is_expression, buffered=False):
+        layer = _polygon_fixture()
+        settings = QgsPalLayerSettings()
+        settings.fieldName = expression
+        settings.isExpression = is_expression
+        fmt = QgsTextFormat()
+        fmt.setColor(QColor(255, 0, 255))
+        if buffered:
+            buf = QgsTextBufferSettings()
+            buf.setEnabled(True)
+            buf.setColor(QColor(255, 255, 255))
+            fmt.setBuffer(buf)
+        settings.setFormat(fmt)
+        layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
+        layer.setLabelsEnabled(True)
+        return layer
+
+    def test_plain_field_labeling(self):
+        layer = self._labeled_layer("nr", False)
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            qgis_labels=True)
+        self.assertEqual(count, 1)
+        # polygon placemark plus the companion label point
+        self.assertEqual(kml.count("<name>0</name>"), 2)
+
+    def test_expression_labeling_evaluated(self):
+        layer = self._labeled_layer("'Nr. ' || \"nr\"", True)
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            qgis_labels=True)
+        self.assertEqual(kml.count("<name>Nr. 0</name>"), 2)
+
+    def test_label_color_follows_the_text_format(self):
+        layer = self._labeled_layer("nr", False)
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            qgis_labels=True)
+        # magenta 255,0,255 in abgr, on the companion label style
+        self.assertIn("<LabelStyle><color>ffff00ff</color>", kml)
+
+    def test_buffered_label_keeps_the_default_white(self):
+        # KML has no text halo - a label that needs its buffer to read stays viewer-default instead of going dark-on-dark
+        layer = self._labeled_layer("nr", False, buffered=True)
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            qgis_labels=True)
+        self.assertEqual(kml.count("<name>0</name>"), 2)
+        self.assertIn("<LabelStyle><scale>1.0</scale>", kml)
+        self.assertNotIn("ffff00ff", kml)
+
+    def test_unlabeled_layer_falls_back_to_no_labels(self):
+        layer = _polygon_fixture()
+        kml, count = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            qgis_labels=True)
+        self.assertEqual(count, 1)
+        self.assertEqual(kml.count("<Placemark>"), 1)
+        self.assertNotIn("<name>0</name>", kml)
+
+
+class TestExtendedData(unittest.TestCase):
+
+    def test_data_fields_become_balloon_rows(self):
+        layer = _polygon_fixture(fields="field=nr:string&field=owner:string")
+        feat = next(layer.getFeatures())
+        layer.dataProvider().changeAttributeValues(
+            {feat.id(): {1: "Ion & fiii <SRL>"}})
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            data_fields=["nr", "owner"])
+        self.assertIn('<Data name="nr"><value>0</value></Data>', kml)
+        self.assertIn("<value>Ion &amp; fiii &lt;SRL&gt;</value>", kml)
+
+    def test_null_and_unknown_fields_skipped(self):
+        layer = _polygon_fixture(fields="field=nr:string&field=owner:string")
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext(),
+            data_fields=["nr", "owner", "missing"])
+        self.assertIn('<Data name="nr">', kml)
+        self.assertNotIn('<Data name="owner">', kml)
+        self.assertNotIn("missing", kml)
+
+    def test_no_data_fields_no_extended_data(self):
+        layer = _polygon_fixture()
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [], QgsProject.instance().transformContext())
+        self.assertNotIn("<ExtendedData>", kml)
+
+    def test_companion_label_point_carries_the_data_too(self):
+        layer = _polygon_fixture()
+        kml, _ = kml_writer.layer_to_kml(
+            layer, [{"field": "nr", "prefix": "No. ", "suffix": ""}],
+            QgsProject.instance().transformContext(),
+            data_fields=["nr"])
+        self.assertEqual(kml.count("<ExtendedData>"), 2)
+
+    def test_attribute_escaping_covers_quotes(self):
+        self.assertEqual(kml_writer.xml_escape_attr('a"b<c>'),
+                         "a&quot;b&lt;c&gt;")
 
 
 class TestKmlDocument(unittest.TestCase):

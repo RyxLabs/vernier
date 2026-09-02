@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Quick Symbology - a Templates tab over services/style_templates with alias-based field binding, and a Custom tab for direct line, vertex-marker and label styling."""
 
+import copy
 import json
 import os
 
@@ -178,6 +179,9 @@ class StyleDialog(BaseDialog):
         self.preselect_active_layer(self.layer_combo)
         self.layer_combo.layerChanged.connect(self._on_layer_changed)
 
+        self.remember("template_vertex_markers", self.template_vertex_chk)
+        self.restore_remembered()
+
     # --- templates tab ---
 
     def _build_templates_tab(self):
@@ -190,6 +194,15 @@ class StyleDialog(BaseDialog):
                 style_templates.templates_dir()))
         self.template_list.itemDoubleClicked.connect(lambda _: self.accept())
         layout.addWidget(self.template_list)
+
+        # user-level opt-out a template's own vertex_marker.enabled can't override
+        self.template_vertex_chk = QCheckBox(
+            self.tr("Apply the template's vertex markers"))
+        self.template_vertex_chk.setChecked(True)
+        self.template_vertex_chk.setToolTip(self.tr(
+            "Unchecked, templates apply without their vertex markers.\n"
+            "Point layers keep their marker style either way."))
+        layout.addWidget(self.template_vertex_chk)
 
         hint = QLabel(self.tr(
             "Templates are JSON files in your QGIS profile. Plugin updates "
@@ -746,6 +759,7 @@ class StyleDialog(BaseDialog):
             return
         if not applied:
             return
+        self.save_remembered()
         layer.triggerRepaint()
         if self.iface:
             self.iface.layerTreeView().refreshLayerSymbology(layer.id())
@@ -756,6 +770,11 @@ class StyleDialog(BaseDialog):
         if name is None:
             return False
         template = style_templates.load(name)
+        if not self.template_vertex_chk.isChecked():
+            # strip on a copy - the loaded dict is what save()/rename() write back to disk
+            template = copy.deepcopy(template)
+            if template.get("vertex_marker"):
+                template["vertex_marker"]["enabled"] = False
         binding, unbound = style_templates.bind_roles(template, layer)
 
         labels = template.get("labels") or {}

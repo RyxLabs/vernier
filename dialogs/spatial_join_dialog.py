@@ -19,6 +19,7 @@ from qgis.core import (  # type: ignore
 
 from ..qt_compat import FIELD_INT, FIELD_STRING
 from ..services import join_service
+from . import _ui_helpers
 from .base_dialog import BaseDialog
 
 _GEOM_MARKS = {
@@ -59,6 +60,9 @@ class SpatialJoinDialog(BaseDialog):
         self.sources_list.setMaximumHeight(110)
         self.sources_list.itemSelectionChanged.connect(self._rebuild_columns)
         sources_layout.addWidget(self.sources_list)
+        source_buttons, _src_all, _src_none = _ui_helpers.make_select_row(
+            self.sources_list.selectAll, self.sources_list.clearSelection)
+        sources_layout.addLayout(source_buttons)
         sources_group.setLayout(sources_layout)
         layout.addWidget(sources_group)
 
@@ -70,14 +74,8 @@ class SpatialJoinDialog(BaseDialog):
         self.columns_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.columns_list.setMaximumHeight(140)
         columns_layout.addWidget(self.columns_list)
-        column_buttons = QHBoxLayout()
-        all_btn = QPushButton(self.tr("All"))
-        all_btn.clicked.connect(self.columns_list.selectAll)
-        none_btn = QPushButton(self.tr("None"))
-        none_btn.clicked.connect(self.columns_list.clearSelection)
-        column_buttons.addWidget(all_btn)
-        column_buttons.addWidget(none_btn)
-        column_buttons.addStretch()
+        column_buttons, _col_all, _col_none = _ui_helpers.make_select_row(
+            self.columns_list.selectAll, self.columns_list.clearSelection)
         columns_layout.addLayout(column_buttons)
         columns_group.setLayout(columns_layout)
         layout.addWidget(columns_group)
