@@ -16,13 +16,9 @@ from qgis.core import (  # type: ignore
 
 PLUGIN_NAME = "Vernier"
 
-# QGIS 3.36 moved the symbol-layer property enum onto Qgis; both spellings are in the wild
-try:
-    _PROP_STROKE_COLOR = Qgis.SymbolLayerProperty.StrokeColor
-    _PROP_FILL_COLOR = Qgis.SymbolLayerProperty.FillColor
-except AttributeError:
-    _PROP_STROKE_COLOR = QgsSymbolLayer.PropertyStrokeColor
-    _PROP_FILL_COLOR = QgsSymbolLayer.PropertyFillColor
+# scoped enum access for PyQt6, original member names for the 3.28 floor
+_PROP_STROKE_COLOR = QgsSymbolLayer.Property.PropertyStrokeColor
+_PROP_FILL_COLOR = QgsSymbolLayer.Property.PropertyFillColor
 
 # opaque blue, in KML's aabbggrr byte order
 KML_FALLBACK_COLOR_ABGR = "ffff0000"
