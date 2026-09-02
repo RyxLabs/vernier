@@ -63,8 +63,18 @@ class LinesToPolygonsDialog(BaseDialog):
 
         self.preselect_active_layer(self.layer_combo)
 
+        self.field_warning = QLabel(self.tr(
+            "This layer has no 'Layer' field, so there are no values to "
+            "convert. Import the drawing with Import DXF / DWG first."))
+        self.field_warning.setWordWrap(True)
+        self.field_warning.setStyleSheet(
+            "color: #d9822b; font-weight: bold; padding: 4px;")
+        self.field_warning.setVisible(False)
+        main_layout.addWidget(self.field_warning)
+
         # one checkbox per unique value
-        values_group = QGroupBox(self.tr("'Layer' attribute values"))
+        self.values_group = QGroupBox(self.tr("'Layer' attribute values"))
+        values_group = self.values_group
         values_layout = QVBoxLayout()
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -115,11 +125,13 @@ class LinesToPolygonsDialog(BaseDialog):
         # a DXF added straight to QGIS brings no CRS, and the polygons inherit that - flag it here while the user can still fix the source
         self.crs_warning.setVisible(
             layer is not None and not layer.crs().isValid())
+        self.field_warning.setVisible(False)
         if not layer or not layer.isValid():
             return
 
         layer_field = self._layer_field_name(layer)
         if not layer_field:
+            self.field_warning.setVisible(True)
             self.log_message(
                 self.tr("No 'Layer' field in the selected layer."),
                 Qgis.MessageLevel.Warning)
@@ -218,11 +230,12 @@ class LinesToPolygonsDialog(BaseDialog):
                 self.show_tool_warning(self.tr("No values to process."))
             return
 
-        # the feedback pumps the event loop, so freeze the dialog for the run - no second Run, no Close mid-run
+        # the feedback pumps the event loop, so freeze the dialog for the run - no second Run, no Close mid-run, and no value toggles that the snapshot below would silently ignore
         self._running = True
         self.run_btn.setEnabled(False)
         self.cancel_btn.setEnabled(False)
         self.layer_combo.setEnabled(False)
+        self.values_group.setEnabled(False)
         self.progress_bar.setFormat(self.tr("Preparing..."))
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(0)  # indeterminate
@@ -284,6 +297,7 @@ class LinesToPolygonsDialog(BaseDialog):
             self.run_btn.setEnabled(True)
             self.cancel_btn.setEnabled(True)
             self.layer_combo.setEnabled(True)
+            self.values_group.setEnabled(True)
             self.progress_bar.setVisible(False)
             self.progress_bar.setFormat("%p%")
             QgsProject.instance().removeMapLayer(work_layer.id())

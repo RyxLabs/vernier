@@ -94,6 +94,9 @@ class DxfExportDialog(BaseDialog):
             lambda: self._set_all_checked(False),
             (btn_visible,))
         btn_reset = QPushButton(self.tr("Reset style"))
+        btn_reset.setToolTip(self.tr(
+            "Put the selected row's stroke, width and text color back to "
+            "the layer's QGIS style"))
         btn_reset.clicked.connect(self._reset_current_layer)
         sel_row.addWidget(btn_reset)
         table_layout.addLayout(sel_row)
@@ -584,6 +587,7 @@ class DxfExportDialog(BaseDialog):
         """Reset the row's style columns back to the live QGIS style."""
         row = self.table.currentRow()
         if row < 0:
+            self.show_tool_notice(self.tr("Click a layer row first."))
             return
         item = self.table.item(row, COL_NAME)
         if not item:
@@ -1070,9 +1074,13 @@ class DxfExportDialog(BaseDialog):
             self.show_tool_warning(self.tr("No files were exported."))
 
     def _begin_export_ui(self):
-        """Kill the buttons and show the progress bar, both modes."""
-        self.run_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(False)
+        """Freeze the buttons and show the progress bar, both modes. The progress callback pumps events, so anything left enabled - Browse, All/None, the checkboxes - would still accept clicks while the export runs on the already-collected config."""
+        self._frozen_buttons = [
+            b for b in self.findChildren(QPushButton) if b.isEnabled()]
+        for button in self._frozen_buttons:
+            button.setEnabled(False)
+        for area in (self.table, self.label_group, self.out_tabs):
+            area.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(0)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1083,8 +1091,11 @@ class DxfExportDialog(BaseDialog):
         """Put the UI back after an export, success or not."""
         self._processing = False
         QApplication.restoreOverrideCursor()
-        self.run_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(True)
+        for button in getattr(self, "_frozen_buttons", []):
+            button.setEnabled(True)
+        self._frozen_buttons = []
+        for area in (self.table, self.label_group, self.out_tabs):
+            area.setEnabled(True)
         self.progress_bar.setVisible(False)
 
     def _collect_config(self):

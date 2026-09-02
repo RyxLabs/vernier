@@ -32,10 +32,20 @@ about=Vernier is a vector editing toolkit for QGIS.
     * DWG (not DXF) import needs the free ODA File Converter, installed
     separately by the user. The plugin only locates it on disk and never
     downloads it.
-version=0.9.0
+version=0.10.0
 author=RyxLabs
 email=hello@ryxlabs.dev
-changelog=0.9.0:
+changelog=0.10.0:
+    * KMZ export rebuilt: output follows each layer's QGIS symbology - categorized, rule-based and per-feature (data-defined) colors, real stroke widths, fills and no-fill styles
+    * KMZ export: styles are written inline per placemark, so Google Maps and Google Earth on phones actually render them
+    * KMZ export: attribute columns of your choosing ship as the balloon table shown when a feature is tapped
+    * KMZ export: labels can come straight from the layer's QGIS labeling (text and color) or from hand-picked fields with prefix/suffix; buffered labels keep the readable viewer default, since KML has no text halo
+    * KMZ export: redesigned dialog - check layers in a table, per-layer flat-color override with "Auto" following the symbology
+    * CAD Lines to Polygons: values start checked; an empty selection warns instead of converting everything
+    * Quick Symbology: vertex markers are now optional
+    * All / None buttons on every checkable or selectable list
+    * Other small fixes
+    0.9.0:
     * Initial release
     * Runs on QGIS 3.28+ and QGIS 4 (Qt5 and Qt6)
     * CAD Mode: typed command bar with autocomplete (42 commands, 78 aliases), dark canvas, scalable grid, status strip with F2/F4/F9 indicators, configurable F8 basemap toggle

@@ -270,6 +270,7 @@ class TopologyPanel(QDockWidget):
         layout.addWidget(self.crs_warning)
 
         checks_group = QGroupBox(self.tr("Checks"))
+        self.checks_group = checks_group
         checks_layout = QVBoxLayout()
         self.check_boxes = {}
         for key, label, _polygon_only in _CHECKS:
@@ -291,12 +292,15 @@ class TopologyPanel(QDockWidget):
         duplicates_box = self.check_boxes["duplicates"]
         self.delete_duplicates_box.setEnabled(duplicates_box.isChecked())
         duplicates_box.toggled.connect(self.delete_duplicates_box.setEnabled)
+        self.delete_duplicates_box.toggled.connect(
+            self._on_delete_duplicates_toggled)
         checks_layout.addWidget(self.delete_duplicates_box)
 
         checks_group.setLayout(checks_layout)
         layout.addWidget(checks_group)
 
         tolerances_group = QGroupBox(self.tr("Tolerances (layer units)"))
+        self.tolerances_group = tolerances_group
         form = QFormLayout()
 
         self.snap_spin = QDoubleSpinBox()
@@ -420,6 +424,12 @@ class TopologyPanel(QDockWidget):
                 self.layer_combo.setLayer(active)
                 return
 
+    def _on_delete_duplicates_toggled(self, checked):
+        # ticked with results on screen, "the run" reads as the one just shown - it only affects the next run, so the status line says that
+        if checked and not self._running and self._errors:
+            self.status_label.setText(
+                self.tr("Duplicate deletion applies on the next run."))
+
     def _set_all_checks(self, checked):
         # disabled boxes stay put - _active_checks skips polygon-only ones on other layers anyway, but a ticked disabled box would look ready to run
         for box in self.check_boxes.values():
@@ -514,8 +524,15 @@ class TopologyPanel(QDockWidget):
         self._layer = layer
         self.tree.clear()
 
+        # decided at Run-click time - the loop below pumps events, and a box read after it would honor mid-run clicks
+        delete_requested = (self.delete_duplicates_box.isChecked()
+                            and self.check_boxes["duplicates"].isChecked())
+
         self._running = True
         self.run_button.setEnabled(False)
+        for area in (self.checks_group, self.tolerances_group,
+                     self.layer_combo):
+            area.setEnabled(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -550,8 +567,7 @@ class TopologyPanel(QDockWidget):
 
             # after publishing, so the map still shows what was found
             deleted = 0
-            if (self.delete_duplicates_box.isChecked()
-                    and self.check_boxes["duplicates"].isChecked()):
+            if delete_requested:
                 deleted = self._delete_redundant_duplicates(layer)
 
             count = len(self._errors)
@@ -581,6 +597,9 @@ class TopologyPanel(QDockWidget):
             self.progress_bar.setVisible(False)
             self._running = False
             self.run_button.setEnabled(True)
+            for area in (self.checks_group, self.tolerances_group,
+                         self.layer_combo):
+                area.setEnabled(True)
 
     def _delete_redundant_duplicates(self, layer):
         """Stage the redundant copies in the layer's edit buffer, one keeper per group, and return how many went. Groups whose members disagree on attributes are reported and skipped rather than resolved by feature id. Nothing is committed - command_bar's toggle comment has the reasoning: a commitChanges() here would bake in whatever else the user had open and throw the undo stack away."""

@@ -160,7 +160,7 @@ _DEFAULT_PAINT = {
 
 def _paint_style(paint: dict, geometry_type, has_labels: bool, sid: str,
                  label_color=None) -> str:
-    """One <Style> for one paint. The polygon label scale is 0 - its name rides on the companion point, and viewers that do label polygons would show it twice. label_color overrides the label text color; by default line and point labels take their own symbol color."""
+    """One <Style> for one paint. The polygon label scale is 0 - its name goes on the companion point, and viewers that do label polygons would show it twice. label_color overrides the label text color; by default line and point labels take their own symbol color."""
     sc = "1.0" if has_labels else "0"
 
     if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
@@ -191,7 +191,7 @@ def _paint_style(paint: dict, geometry_type, has_labels: bool, sid: str,
 
 
 def _label_point_style(lid: str, label_color=None) -> str:
-    """Invisible icon, visible text - the companion point that carries a polygon's label. Without a color the viewer's default label white applies, which reads on imagery; a same-as-outline label just melts into its polygon."""
+    """Invisible icon, visible text - the companion point that carries a polygon's label. Without a color the viewer default applies (white with a dark outline), which stays legible over imagery; a label in the outline color is hard to tell apart from its polygon."""
     color = f"<color>{label_color}</color>" if label_color else ""
     return (f'<Style id="{lid}"><IconStyle><scale>0</scale></IconStyle>'
             f'<LabelStyle>{color}<scale>1.0</scale>'
@@ -357,7 +357,7 @@ def layer_to_kml(layer, label_fields, transform_context,
 
     uniform = color_abgr is not None
     if uniform:
-        # the flat override becomes a paint like any other, outline-only for polygons - the historical look of the override
+        # the flat override becomes a paint like any other; polygons get no fill, so the forced color draws only the outline
         uniform_paint = {
             "line": color_abgr, "fill": color_abgr,
             "fill_flag": "0" if gt == QgsWkbTypes.GeometryType.PolygonGeometry
@@ -433,7 +433,7 @@ def layer_to_kml(layer, label_fields, transform_context,
                                 symbol, fgt, opacity,
                                 ctx.expressionContext())
 
-                # the style is pasted into every placemark rather than shared and referenced through styleUrl - Google Maps on phones, the audience this export is tuned for, ignores styleUrl references, and the repetition deflates to nearly nothing inside the KMZ
+                # the style is pasted into every placemark rather than shared and referenced through styleUrl - Google Maps on phones, the audience this export is tuned for, ignores styleUrl references, and the repetition compresses to nearly nothing inside the KMZ
                 style = _paint_style(paint, fgt, has_labels,
                                      f"s{style_index}_{count}", label_color)
 
@@ -445,7 +445,7 @@ def layer_to_kml(layer, label_fields, transform_context,
                 placemarks.append("    " + gkml)
                 placemarks.append("  </Placemark>")
 
-                # the polygon's own label scale is 0, the name rides on a companion point - and an off-type row must not get one
+                # the polygon's own label scale is 0, the name goes on a companion point - and an off-type row must not get one
                 if (gt == QgsWkbTypes.GeometryType.PolygonGeometry
                         and fgt == gt and label):
                     interior_pt = geom.pointOnSurface()

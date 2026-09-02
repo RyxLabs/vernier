@@ -46,10 +46,10 @@ class SpatialJoinDialog(BaseDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        group, self.target_combo, self.selected_only = \
+        self.target_group, self.target_combo, self.selected_only = \
             self.create_layer_group(self.tr("Target layer (polygons)"),
                                     QgsMapLayerProxyModel.Filter.PolygonLayer)
-        layout.addWidget(group)
+        layout.addWidget(self.target_group)
 
         sources_group = QGroupBox(self.tr("Source layers"))
         sources_layout = QVBoxLayout()
@@ -65,6 +65,7 @@ class SpatialJoinDialog(BaseDialog):
         sources_layout.addLayout(source_buttons)
         sources_group.setLayout(sources_layout)
         layout.addWidget(sources_group)
+        self.sources_group = sources_group
 
         columns_group = QGroupBox(self.tr("Columns to bring over"))
         columns_layout = QVBoxLayout()
@@ -79,6 +80,7 @@ class SpatialJoinDialog(BaseDialog):
         columns_layout.addLayout(column_buttons)
         columns_group.setLayout(columns_layout)
         layout.addWidget(columns_group)
+        self.columns_group = columns_group
 
         options_group = QGroupBox(self.tr("Options"))
         options_form = QFormLayout()
@@ -101,6 +103,7 @@ class SpatialJoinDialog(BaseDialog):
         options_form.addRow(self.tr("Feature ID field:"), self.id_field_combo)
         options_group.setLayout(options_form)
         layout.addWidget(options_group)
+        self.options_group = options_group
 
         self.progress_bar = self.create_progress_bar()
         layout.addWidget(self.progress_bar)
@@ -281,6 +284,10 @@ class SpatialJoinDialog(BaseDialog):
     def _set_busy(self, busy):
         for button in (self.run_btn, self.close_btn):
             button.setEnabled(not busy)
+        # the run pumps events but works on a snapshot of these inputs - left enabled, they could still be changed mid-run with no effect
+        for group in (self.target_group, self.sources_group,
+                      self.columns_group, self.options_group):
+            group.setEnabled(not busy)
         self.run_btn.setText(
             self.tr("Working...") if busy else self.tr("Run join"))
 
