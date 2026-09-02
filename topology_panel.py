@@ -22,6 +22,7 @@ from qgis.core import (  # type: ignore
 from qgis.gui import QgsMapLayerComboBox, QgsRubberBand  # type: ignore
 
 from .qt_compat import FIELD_DOUBLE, FIELD_LONGLONG, FIELD_STRING
+from .dialogs import _ui_helpers
 from .i18n import tr as _tr
 from .services import settings_service, topology_service
 
@@ -208,6 +209,10 @@ class TopologyPanel(QDockWidget):
             box.setChecked(True)
             self.check_boxes[key] = box
             checks_layout.addWidget(box)
+        select_row, _all_btn, _none_btn = _ui_helpers.make_select_row(
+            lambda: self._set_all_checks(True),
+            lambda: self._set_all_checks(False))
+        checks_layout.addLayout(select_row)
         checks_group.setLayout(checks_layout)
         layout.addWidget(checks_group)
 
@@ -334,6 +339,12 @@ class TopologyPanel(QDockWidget):
             if layer is not None and layer.id() == active.id():
                 self.layer_combo.setLayer(active)
                 return
+
+    def _set_all_checks(self, checked):
+        # disabled boxes stay put - _active_checks skips polygon-only ones on other layers anyway, but a ticked disabled box would look ready to run
+        for box in self.check_boxes.values():
+            if box.isEnabled():
+                box.setChecked(checked)
 
     def _update_layer_info(self):
         layer = self.layer_combo.currentLayer()

@@ -51,7 +51,7 @@ CAD Mode command bar.
 | Remove Close Vertices | `clean`, `cv` | Drops vertices that fall closer together than a tolerance, but keeps any vertex shared with a neighboring feature, so common boundaries survive. |
 | Centerline Extraction | `centerline`, `cl` | Computes the medial axis of a polygon, then extracts the main trunk and straightens it. |
 | Attribute / Spatial Join | `join`, `sjoin` | Joins several source layers in one pass, previews how many records match before anything is written, applies a policy you choose when one key matches several rows, and records which source each value came from. |
-| KMZ Export | `kmz` | Writes several layers into one KMZ with label placemarks and per-layer colors. It remembers the label prefix and suffix for each field and shares them with the DXF export. |
+| KMZ Export | `kmz` | Writes several layers into one KMZ that keeps each layer's QGIS symbology - categorized and rule-based colors included - with label placemarks and the attribute columns you pick shown in the Google Earth balloon. It remembers the label prefix and suffix for each field and shares them with the DXF export. |
 | Area Readout | — | Shows the ellipsoidal area of the selected polygons in the status bar and updates it as the selection changes. You choose the units. |
 | Geoprocessing Shortcuts | `bf`, `int`, `diff`, `dis`, `m2s` | Runs buffer, intersection, difference, dissolve and multipart-to-single directly, without opening the Processing toolbox. |
 | Topology Validator | `topology`, `topo` | Checks for invalid geometries, duplicates, overlaps, gaps and vertex errors. Each result is a row you can click to zoom to the geometry, and each kind of error becomes a styled layer carrying the error details as attributes. |

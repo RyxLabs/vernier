@@ -15,6 +15,7 @@ from qgis.core import (  # type: ignore
 )
 from qgis.gui import QgsMapLayerComboBox  # type: ignore
 
+from . import _ui_helpers
 from .base_dialog import BaseDialog
 
 
@@ -71,6 +72,10 @@ class LinesToPolygonsDialog(BaseDialog):
         self.values_layout = QVBoxLayout(self.values_widget)
         self.scroll_area.setWidget(self.values_widget)
         values_layout.addWidget(self.scroll_area)
+        select_row, _all_btn, _none_btn = _ui_helpers.make_select_row(
+            lambda: self._set_all_values_checked(True),
+            lambda: self._set_all_values_checked(False))
+        values_layout.addLayout(select_row)
         values_group.setLayout(values_layout)
         main_layout.addWidget(values_group)
 
@@ -125,7 +130,14 @@ class LinesToPolygonsDialog(BaseDialog):
             if value is None or value == "":
                 continue
             cb = QCheckBox(str(value))
+            cb.setChecked(True)
             self.values_layout.addWidget(cb)
+
+    def _set_all_values_checked(self, checked):
+        for i in range(self.values_layout.count()):
+            cb = self.values_layout.itemAt(i).widget()
+            if isinstance(cb, QCheckBox):
+                cb.setChecked(checked)
 
     def _clear_values(self):
         while self.values_layout.count():
@@ -199,13 +211,11 @@ class LinesToPolygonsDialog(BaseDialog):
 
         selected = self._get_selected()
         if not selected:
-            # nothing checked means everything
-            idx = layer.fields().indexOf(layer_field)
-            selected = [str(v) for v in layer.uniqueValues(idx)
-                        if v is not None and v != ""]
-
-        if not selected:
-            self.show_tool_warning(self.tr("No values to process."))
+            if self.values_layout.count():
+                self.show_tool_warning(
+                    self.tr("Check at least one value in the list."))
+            else:
+                self.show_tool_warning(self.tr("No values to process."))
             return
 
         # the feedback pumps the event loop, so freeze the dialog for the run - no second Run, no Close mid-run

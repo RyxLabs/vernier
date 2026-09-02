@@ -18,6 +18,7 @@ from qgis.gui import QgsMapLayerComboBox  # type: ignore
 
 from ..qt_compat import FIELD_STRING
 from ..services import join_service
+from . import _ui_helpers
 from .base_dialog import BaseDialog
 
 
@@ -56,23 +57,20 @@ class AttributeJoinDialog(BaseDialog):
         self.sources_table.itemChanged.connect(self._on_sources_changed)
         sources_layout.addWidget(self.sources_table)
 
+        source_buttons, _src_all, _src_none = _ui_helpers.make_select_row(
+            lambda: self._set_all_sources_checked(True),
+            lambda: self._set_all_sources_checked(False))
+        sources_layout.addLayout(source_buttons)
+
         sources_layout.addWidget(QLabel(self.tr(
             "Columns to bring over (Ctrl+click for several):")))
-        columns_row = QHBoxLayout()
         self.columns_list = QListWidget()
         self.columns_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.columns_list.setMaximumHeight(120)
-        columns_row.addWidget(self.columns_list)
-        column_buttons = QVBoxLayout()
-        all_btn = QPushButton(self.tr("All"))
-        all_btn.clicked.connect(self.columns_list.selectAll)
-        none_btn = QPushButton(self.tr("None"))
-        none_btn.clicked.connect(self.columns_list.clearSelection)
-        column_buttons.addWidget(all_btn)
-        column_buttons.addWidget(none_btn)
-        column_buttons.addStretch()
-        columns_row.addLayout(column_buttons)
-        sources_layout.addLayout(columns_row)
+        sources_layout.addWidget(self.columns_list)
+        column_buttons, _col_all, _col_none = _ui_helpers.make_select_row(
+            self.columns_list.selectAll, self.columns_list.clearSelection)
+        sources_layout.addLayout(column_buttons)
         sources_group.setLayout(sources_layout)
         layout.addWidget(sources_group)
 
@@ -170,6 +168,17 @@ class AttributeJoinDialog(BaseDialog):
     def _on_sources_changed(self, item):
         if item.column() == 0:
             self._rebuild_columns()
+
+    def _set_all_sources_checked(self, checked):
+        # one signal burst, then a single columns rebuild instead of one per row
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        self.sources_table.blockSignals(True)
+        for row in range(self.sources_table.rowCount()):
+            item = self.sources_table.item(row, 0)
+            if item:
+                item.setCheckState(state)
+        self.sources_table.blockSignals(False)
+        self._rebuild_columns()
 
     def _rebuild_columns(self):
         self.columns_list.clear()

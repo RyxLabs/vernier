@@ -6,11 +6,12 @@
 import os
 from typing import Optional
 
-from qgis.PyQt.QtCore import QUrl  # type: ignore
+from qgis.PyQt.QtCore import Qt, QUrl  # type: ignore
 from qgis.PyQt.QtGui import QDesktopServices  # type: ignore
 from qgis.PyQt.QtWidgets import (  # type: ignore
-    QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QLineEdit, QMessageBox,
-    QRadioButton, QSpinBox, QTabWidget, QWidget,
+    QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLineEdit,
+    QMessageBox, QPushButton, QRadioButton, QSpinBox, QTabWidget, QTreeWidget,
+    QWidget,
 )
 from qgis.core import QgsMessageLog, Qgis  # type: ignore
 
@@ -103,6 +104,59 @@ def show_export_done(parent: QWidget, summary: str,
     if btn_open and msg.clickedButton() == btn_open:
         # QDesktopServices rather than os.startfile, this one works on Linux/macOS too
         QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
+
+
+# --- selection rows ---
+
+def make_select_row(on_all, on_none, extra_buttons=()):
+    """The standard All/None button row for a checkable or multi-select widget, as (layout, all_btn, none_btn). It goes directly below the widget it drives, inside the same group box. extra_buttons land between None and the stretch; append right-aligned actions to the returned layout after the stretch."""
+    layout = QHBoxLayout()
+    all_btn = QPushButton(_tr("All"))
+    none_btn = QPushButton(_tr("None"))
+    # lambdas so clicked's checked bool never reaches the callbacks
+    all_btn.clicked.connect(lambda: on_all())
+    none_btn.clicked.connect(lambda: on_none())
+    layout.addWidget(all_btn)
+    layout.addWidget(none_btn)
+    for button in extra_buttons:
+        layout.addWidget(button)
+    layout.addStretch()
+    return layout, all_btn, none_btn
+
+
+def set_all_check_states(widget, checked: bool, column: int = 0):
+    """Check or uncheck every top-level item of a checkable QTreeWidget or QListWidget. Signals stay blocked for the sweep - itemChanged handlers that refresh per row would otherwise run once per item - so the caller does its own single refresh after."""
+    state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+    widget.blockSignals(True)
+    try:
+        if isinstance(widget, QTreeWidget):
+            for i in range(widget.topLevelItemCount()):
+                widget.topLevelItem(i).setCheckState(column, state)
+        else:
+            for i in range(widget.count()):
+                widget.item(i).setCheckState(state)
+    finally:
+        widget.blockSignals(False)
+
+
+def center_table_widget(table, row: int, col: int, widget):
+    """Wrap a widget so it sits centered in a table cell instead of hugging the left edge."""
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.addWidget(widget)
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.setContentsMargins(0, 0, 0, 0)
+    table.setCellWidget(row, col, container)
+
+
+def centered_table_widget(table, row: int, col: int):
+    """The widget back out of a centered cell, None when the cell has none."""
+    container = table.cellWidget(row, col)
+    if container:
+        layout = container.layout()
+        if layout and layout.count() > 0:
+            return layout.itemAt(0).widget()
+    return None
 
 
 # --- remembered widget values ---

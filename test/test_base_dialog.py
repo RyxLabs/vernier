@@ -196,6 +196,79 @@ class RememberedValueTests(unittest.TestCase):
         self.assertEqual(self.widgets["style"].currentIndex(), 1)
 
 
+class SelectRowTests(unittest.TestCase):
+    """The one All/None row every checkable list ships with."""
+
+    def test_buttons_drive_the_callbacks(self):
+        from vernier.dialogs import _ui_helpers
+        calls = []
+        layout, all_btn, none_btn = _ui_helpers.make_select_row(
+            lambda: calls.append("all"), lambda: calls.append("none"))
+        self.assertEqual(all_btn.text(), "All")
+        self.assertEqual(none_btn.text(), "None")
+        all_btn.click()
+        none_btn.click()
+        self.assertEqual(calls, ["all", "none"])
+        # trailing stretch keeps the buttons left-aligned
+        self.assertGreater(layout.count(), 2)
+
+    def test_extra_buttons_sit_before_the_stretch(self):
+        from qgis.PyQt.QtWidgets import QPushButton
+        from vernier.dialogs import _ui_helpers
+        extra = QPushButton("Visible only")
+        layout, _all_btn, _none_btn = _ui_helpers.make_select_row(
+            lambda: None, lambda: None, (extra,))
+        self.assertIs(layout.itemAt(2).widget(), extra)
+
+    def test_bulk_check_covers_tree_columns_and_lists(self):
+        from qgis.PyQt.QtCore import Qt
+        from qgis.PyQt.QtWidgets import (
+            QListWidget, QListWidgetItem, QTreeWidget, QTreeWidgetItem,
+        )
+        from vernier.dialogs import _ui_helpers
+
+        tree = QTreeWidget()
+        tree.setColumnCount(2)
+        for i in range(3):
+            item = QTreeWidgetItem(["a", "b"])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Unchecked)
+            item.setCheckState(1, Qt.CheckState.Checked)
+            tree.addTopLevelItem(item)
+        _ui_helpers.set_all_check_states(tree, True)
+        _ui_helpers.set_all_check_states(tree, False, column=1)
+        for i in range(3):
+            item = tree.topLevelItem(i)
+            self.assertEqual(item.checkState(0), Qt.CheckState.Checked)
+            self.assertEqual(item.checkState(1), Qt.CheckState.Unchecked)
+
+        checkable_list = QListWidget()
+        for i in range(3):
+            item = QListWidgetItem("v")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            checkable_list.addItem(item)
+        _ui_helpers.set_all_check_states(checkable_list, True)
+        for i in range(3):
+            self.assertEqual(checkable_list.item(i).checkState(),
+                             Qt.CheckState.Checked)
+
+    def test_bulk_check_fires_no_item_signals(self):
+        from qgis.PyQt.QtCore import Qt
+        from qgis.PyQt.QtWidgets import QTreeWidget, QTreeWidgetItem
+        from vernier.dialogs import _ui_helpers
+
+        tree = QTreeWidget()
+        item = QTreeWidgetItem(["a"])
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(0, Qt.CheckState.Unchecked)
+        tree.addTopLevelItem(item)
+        fired = []
+        tree.itemChanged.connect(lambda *_: fired.append(1))
+        _ui_helpers.set_all_check_states(tree, True)
+        self.assertEqual(fired, [])
+
+
 class ResultPhraseTests(unittest.TestCase):
     """The one success sentence every tool shows has to agree with itself on singular and plural."""
 

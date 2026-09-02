@@ -335,6 +335,14 @@ class TestApplyToLayer(unittest.TestCase):
         self.assertIn('"ID"', settings.fieldName)
         self.assertIn('"Sup"', settings.fieldName)
 
+    def test_disabled_vertex_marker_stays_off(self):
+        layer = _fixture_layer()
+        template = _template()
+        template["vertex_marker"]["enabled"] = False
+        style_templates.apply_to_layer(template, layer)
+        # just the fill layer, no marker line appended
+        self.assertEqual(layer.renderer().symbol().symbolLayerCount(), 1)
+
     def test_unbound_roles_reported_and_rest_labeled(self):
         layer = QgsVectorLayer(
             "Polygon?crs=EPSG:3857&field=ID:string", "fixture", "memory")
@@ -408,6 +416,13 @@ class TestDialogConventions(unittest.TestCase):
             source = fp.read()
         self.assertIn("setCheckable(True)", source)
         self.assertIn('"enabled": self.vertex_group.isChecked()', source)
+
+    def test_templates_tab_can_strip_vertex_markers(self):
+        # the Templates tab override applies a template minus its markers, on a copy so the stored dict is never mutated and written back
+        with open(self.FILES[0], encoding="utf-8") as fp:
+            source = fp.read()
+        self.assertIn("template_vertex_chk", source)
+        self.assertIn("copy.deepcopy(template)", source)
 
 
 if __name__ == "__main__":
