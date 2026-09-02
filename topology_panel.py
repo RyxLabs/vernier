@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText: 2026 RYXLAB SOFT TECH SRL (RyxLabs)
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Topology Validator - runs the five topology_service checks and lists the findings in a tree whose rows zoom and highlight, plus styled memory error layers for the overlap, gap and vertex classes."""
+"""Topology Validator - runs the five topology_service checks and lists the findings in a tree whose rows zoom and highlight, plus a styled memory error layer for every finding class."""
 
 # owns canvas rubber bands, so the plugin has to call cleanup() from unload()
 
@@ -14,17 +14,20 @@ from qgis.PyQt.QtWidgets import (  # type: ignore
 )
 from qgis.core import (  # type: ignore
     Qgis, QgsCategorizedSymbolRenderer, QgsCoordinateTransform,
-    QgsCsException, QgsFeature, QgsField, QgsFillSymbol,
-    QgsMapLayerProxyModel, QgsMarkerSymbol, QgsMessageLog, QgsProject,
-    QgsRectangle, QgsRendererCategory, QgsSingleSymbolRenderer,
-    QgsUnitTypes, QgsVectorLayer, QgsWkbTypes,
+    QgsCsException, QgsFeature, QgsFeatureRequest, QgsField, QgsFillSymbol,
+    QgsGeometry, QgsMapLayerProxyModel, QgsMarkerSymbol, QgsMessageLog,
+    QgsProject,
+    QgsRectangle, QgsRendererCategory, QgsSingleSymbolRenderer, QgsUnitTypes,
+    QgsVectorLayer, QgsWkbTypes,
 )
 from qgis.gui import QgsMapLayerComboBox, QgsRubberBand  # type: ignore
 
-from .qt_compat import FIELD_DOUBLE, FIELD_LONGLONG, FIELD_STRING
+from .qt_compat import (
+    DELETE_FEATURES, FIELD_DOUBLE, FIELD_LONGLONG, FIELD_STRING,
+)
 from .dialogs import _ui_helpers
 from .i18n import tr as _tr
-from .services import settings_service, topology_service
+from .services import error_styles, settings_service, topology_service
 
 # (key, label, polygon_only) in display and run order, labels translated at consumption
 _CHECKS = (
@@ -76,6 +79,43 @@ def _vertex_renderer():
     return QgsCategorizedSymbolRenderer("issue", categories)
 
 
+def _invalid_rows(errors):
+    """(point, attributes) per invalid feature, as (complaint, feature id). The check_validity report is one error per feature, so no grouping is needed."""
+    rows = []
+    for error in errors:
+        if error.location is None or error.location.isNull():
+            continue
+        rows.append((QgsGeometry(error.location),
+                     [error.subtype or error.description,
+                      error.feature_ids[0]]))
+    return rows
+
+
+def _duplicate_rows(errors):
+    """(geometry, attributes) per duplicate group, as (kind, keeper id, copies). check_duplicates reports a group of n as n-1 pairs that all name the same keeper, so grouping on that id rebuilds the group. One row per group rather than per feature is deliberate: every copy in a group shares one footprint, so a row each would overprint the same translucent fill and shade a big group darker than a small one - the count goes in an attribute instead of into the ink."""
+    groups = {}
+    order = []
+    for error in errors:
+        keeper = error.feature_ids[0]
+        if keeper not in groups:
+            groups[keeper] = (error.conflict, set())
+            order.append(keeper)
+        groups[keeper][1].add(error.feature_ids[1])
+    rows = []
+    for keeper in order:
+        geometry, others = groups[keeper]
+        carrier = QgsGeometry(geometry)
+        carrier.convertToMultiType()
+        rows.append((carrier, [topology_service.KIND_DUPLICATE, keeper,
+                               len(others) + 1]))
+    return rows
+
+
+def _duplicate_shape(geometry):
+    """Memory layer type string for the duplicates layer. Multi, so a single and a multi part of the same family both land - unlike the other checks this one also runs on point and line layers."""
+    return QgsWkbTypes.displayString(QgsWkbTypes.multiType(geometry.wkbType()))
+
+
 def _publish_error_layer(crs, shape, name, schema, rows, renderer):
     """One styled memory error layer at the top of the layer tree, rows as (geometry, attributes) pairs. None when the layer could not be created."""
     layer = QgsVectorLayer(shape, name, "memory")
@@ -106,9 +146,35 @@ def _publish_error_layer(crs, shape, name, schema, rows, renderer):
 
 
 def build_error_layers(errors, crs):
-    """Publish the error classes as styled memory layers, replacing whatever the previous run left. Returns what it made. Invalid and duplicate findings get rubber-band highlights instead of layers, so only these three classes publish."""
+    """Publish the error classes as styled memory layers, replacing whatever the previous run left. Returns what it made. Every class publishes: the derived ones (invalid locations, overlap slivers, gaps, vertex points) carry geometry you cannot see in the source layer, and duplicates carry the footprint itself because there is nothing else to show."""
     _discard_previous_results()
     published = []
+
+    invalid = [e for e in errors
+               if e.kind == topology_service.KIND_INVALID]
+    if invalid:
+        rows = _invalid_rows(invalid)
+        if rows:
+            published.append(_publish_error_layer(
+                crs, "Point", _tr("Topology invalid geometries"),
+                [QgsField("issue", FIELD_STRING),
+                 QgsField("feature", FIELD_LONGLONG)],
+                rows,
+                error_styles.invalid_renderer()))
+
+    duplicates = [e for e in errors
+                  if e.kind == topology_service.KIND_DUPLICATE]
+    if duplicates:
+        rows = _duplicate_rows(duplicates)
+        if rows:
+            published.append(_publish_error_layer(
+                crs, _duplicate_shape(rows[0][0]),
+                _tr("Topology duplicates"),
+                [QgsField("issue", FIELD_STRING),
+                 QgsField("keeper", FIELD_LONGLONG),
+                 QgsField("copies", FIELD_LONGLONG)],
+                rows,
+                error_styles.duplicate_renderer(rows[0][0].type())))
 
     overlaps = [e for e in errors
                 if e.kind == topology_service.KIND_OVERLAP]
@@ -170,12 +236,14 @@ class TopologyPanel(QDockWidget):
         canvas = iface.mapCanvas()
         # conflict band matches the overlap layer's crimson, the features involved get a muted slate so they read as context rather than error
         self._rb_conflict = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
-        self._rb_conflict.setColor(QColor(216, 17, 89, 110))
+        self._rb_conflict.setFillColor(QColor(216, 17, 89, 90))
+        self._rb_conflict.setStrokeColor(QColor(216, 17, 89, 255))
         self._rb_conflict.setWidth(3)
         self._rb_conflict.setIcon(QgsRubberBand.IconType.ICON_CIRCLE)
         self._rb_conflict.setIconSize(12)
         self._rb_features = QgsRubberBand(canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
-        self._rb_features.setColor(QColor(69, 123, 157, 70))
+        self._rb_features.setFillColor(QColor(69, 123, 157, 55))
+        self._rb_features.setStrokeColor(QColor(69, 123, 157, 170))
         self._rb_features.setWidth(3)
 
         self._setup_ui()
@@ -213,6 +281,18 @@ class TopologyPanel(QDockWidget):
             lambda: self._set_all_checks(True),
             lambda: self._set_all_checks(False))
         checks_layout.addLayout(select_row)
+
+        self.delete_duplicates_box = QCheckBox(self.tr(
+            "Delete duplicate geometries after the run (keeps one per group)"))
+        self.delete_duplicates_box.setChecked(False)
+        self.delete_duplicates_box.setToolTip(self.tr(
+            "Staged in the layer's edit buffer, not written to disk - "
+            "review and save the layer, or press Ctrl+Z to undo."))
+        duplicates_box = self.check_boxes["duplicates"]
+        self.delete_duplicates_box.setEnabled(duplicates_box.isChecked())
+        duplicates_box.toggled.connect(self.delete_duplicates_box.setEnabled)
+        checks_layout.addWidget(self.delete_duplicates_box)
+
         checks_group.setLayout(checks_layout)
         layout.addWidget(checks_group)
 
@@ -468,6 +548,12 @@ class TopologyPanel(QDockWidget):
             build_error_layers(self._errors, layer.crs())
             self.iface.mapCanvas().refresh()
 
+            # after publishing, so the map still shows what was found
+            deleted = 0
+            if (self.delete_duplicates_box.isChecked()
+                    and self.check_boxes["duplicates"].isChecked()):
+                deleted = self._delete_redundant_duplicates(layer)
+
             count = len(self._errors)
             if count == 0:
                 self.status_label.setText(self.tr("No errors found."))
@@ -482,11 +568,67 @@ class TopologyPanel(QDockWidget):
                 self.status_label.setText(
                     self.tr("Found {0} errors - click a row to zoom to "
                             "it.").format(count))
+
+            if deleted:
+                self.iface.messageBar().pushMessage(
+                    self.tr("Topology Validator"),
+                    self.tr("Deleted {0} duplicate features - review and save "
+                            "the layer, or press Ctrl+Z to undo.")
+                    .format(deleted),
+                    level=Qgis.MessageLevel.Info, duration=8)
         finally:
             QApplication.restoreOverrideCursor()
             self.progress_bar.setVisible(False)
             self._running = False
             self.run_button.setEnabled(True)
+
+    def _delete_redundant_duplicates(self, layer):
+        """Stage the redundant copies in the layer's edit buffer, one keeper per group, and return how many went. Groups whose members disagree on attributes are reported and skipped rather than resolved by feature id. Nothing is committed - command_bar's toggle comment has the reasoning: a commitChanges() here would bake in whatever else the user had open and throw the undo stack away."""
+        groups = topology_service.duplicate_id_groups(self._errors)
+        if not groups:
+            return 0
+        wanted = [fid for group in groups for fid in group]
+        attributes = {feature.id(): feature.attributes()
+                      for feature in layer.getFeatures(
+                          QgsFeatureRequest().setFilterFids(wanted))}
+        ids, conflicted = topology_service.split_duplicate_groups(
+            self._errors, attributes)
+        if conflicted:
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("{0} duplicate group(s) hold the same geometry with "
+                        "different attributes and were left alone - the "
+                        "copies are not interchangeable.").format(
+                            len(conflicted)),
+                level=Qgis.MessageLevel.Warning, duration=10)
+        if not ids:
+            return 0
+        if not layer.dataProvider().capabilities() & DELETE_FEATURES:
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("This layer's provider cannot delete features, so "
+                        "the duplicates were left alone."),
+                level=Qgis.MessageLevel.Warning, duration=7)
+            return 0
+        if not layer.isEditable() and not layer.startEditing():
+            self.iface.messageBar().pushMessage(
+                self.tr("Topology Validator"),
+                self.tr("Could not open an edit session, so the duplicates "
+                        "were left alone."),
+                level=Qgis.MessageLevel.Warning, duration=7)
+            return 0
+        layer.beginEditCommand(self.tr("Delete duplicate geometries"))
+        try:
+            removed = layer.deleteFeatures(ids)
+        except Exception:
+            layer.destroyEditCommand()  # leave the buffer as we found it
+            raise
+        if not removed:
+            layer.destroyEditCommand()
+            return 0
+        layer.endEditCommand()
+        layer.triggerRepaint()
+        return len(ids)
 
     def _add_check_branch(self, label, errors, failure):
         if errors is None:
@@ -556,9 +698,12 @@ class TopologyPanel(QDockWidget):
         self._clear_highlight()
         self._rb_conflict.reset(conflict.type())
         self._rb_conflict.addGeometry(conflict, layer)
-        if error.feature_geometries:
-            self._rb_features.reset(error.feature_geometries[0].type())
-            for geometry in error.feature_geometries:
+        # a duplicate's "features involved" ARE the conflict geometry, so drawing them would only wash the crimson out with slate and show nothing new
+        context = [geometry for geometry in error.feature_geometries
+                   if not geometry.isGeosEqual(conflict)]
+        if context:
+            self._rb_features.reset(context[0].type())
+            for geometry in context:
                 self._rb_features.addGeometry(geometry, layer)
         canvas.refresh()
         if crs is not None and crs.isValid():
