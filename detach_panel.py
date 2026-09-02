@@ -7,7 +7,7 @@
 
 import math
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal  # type: ignore
+from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal  # type: ignore
 from qgis.PyQt.QtGui import QColor, QCursor  # type: ignore
 from qgis.PyQt.QtWidgets import (  # type: ignore
     QAbstractItemView, QApplication, QCheckBox, QDockWidget, QDoubleSpinBox,
@@ -538,15 +538,19 @@ class DetachPanel(QDockWidget):
         if isinstance(layer, QgsVectorLayer):
             self._layer = layer
             layer.selectionChanged.connect(self._update_source_info)
+            # vertex edits change the source and remainder areas, so the readout updates on geometry edits too
+            layer.geometryChanged.connect(self._update_source_info)
         self._update_source_info()
 
     def _disconnect_layer(self):
         if self._layer is None:
             return
-        try:
-            self._layer.selectionChanged.disconnect(self._update_source_info)
-        except (TypeError, RuntimeError):
-            pass  # never connected, or the C++ object is gone
+        for signal in (self._layer.selectionChanged,
+                       self._layer.geometryChanged):
+            try:
+                signal.disconnect(self._update_source_info)
+            except (TypeError, RuntimeError):
+                pass  # never connected, or the C++ object is gone
         self._layer = None
 
     def _on_layers_removed(self, layer_ids):
@@ -898,7 +902,14 @@ class DetachPanel(QDockWidget):
         finally:
             QApplication.restoreOverrideCursor()
             self._running = False
+            # deferred: the run is synchronous, so re-enabling immediately would let the queued second click of a double-click start a second run
+            QTimer.singleShot(0, self._re_enable_run)
+
+    def _re_enable_run(self):
+        try:
             self.run_button.setEnabled(True)
+        except RuntimeError:
+            pass  # panel already destroyed
 
     def _build_output_layer(self, source, result, ids):
         output = QgsVectorLayer(

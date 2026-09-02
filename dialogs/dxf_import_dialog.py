@@ -440,11 +440,29 @@ class DxfImportDialog(BaseDialog):
             except RuntimeError:
                 pass  # C++ object already deleted
 
+    def _confirm_abandon_running_task(self) -> bool:
+        """Closing cancels the running conversion, which can be minutes of work - so confirm before closing."""
+        try:
+            running = bool(self._task
+                           and self._task.status() == self._task.Running)
+        except RuntimeError:
+            running = False  # C++ object already deleted
+        if not running:
+            return True
+        return self.confirm_action(
+            self.tr("Import running"),
+            self.tr("Close the dialog and cancel the running import?"))
+
     def reject(self):
         # Close and Esc never emit a QCloseEvent, so cancel here too or a closed dialog leaves the conversion running
+        if not self._confirm_abandon_running_task():
+            return
         self._shutdown_task()
         super().reject()
 
     def closeEvent(self, event):
+        if not self._confirm_abandon_running_task():
+            event.ignore()
+            return
         self._shutdown_task()
         super().closeEvent(event)

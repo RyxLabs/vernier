@@ -570,8 +570,23 @@ class StyleDialog(BaseDialog):
             layer = self.layer_combo.currentLayer()
         self._populate_field_combo(layer)
         self._populate_placement_combo(layer)
+        self._apply_geometry_mode(layer)
         self._load_current_style()
         self._update_label_preview()
+
+    def _apply_geometry_mode(self, layer):
+        """A point symbol is the marker itself, so the group stops being optional and the pen-style row disables - neither is a choice for points."""
+        is_point = (isinstance(layer, QgsVectorLayer)
+                    and layer.geometryType()
+                    == QgsWkbTypes.GeometryType.PointGeometry)
+        if is_point:
+            self.vertex_group.setChecked(True)
+            self.vertex_group.setCheckable(False)
+            self.vertex_group.setTitle(self.tr("Marker"))
+        else:
+            self.vertex_group.setCheckable(True)
+            self.vertex_group.setTitle(self.tr("Vertex markers"))
+        self.line_style_combo.setEnabled(not is_point)
 
     def _populate_field_combo(self, layer):
         previous = self.label_field_combo.currentText()
@@ -612,7 +627,11 @@ class StyleDialog(BaseDialog):
             symbol = renderer.symbol()
             if symbol is not None:
                 self._load_line_style(symbol, layer.geometryType())
-                self._load_vertex_style(symbol)
+                if (layer.geometryType()
+                        == QgsWkbTypes.GeometryType.PointGeometry):
+                    self._load_marker_style(symbol)
+                else:
+                    self._load_vertex_style(symbol)
 
         self._update_apply_notice(layer, renderer)
         self._load_label_settings(layer)
@@ -678,6 +697,17 @@ class StyleDialog(BaseDialog):
         except AttributeError:
             pass
         return None
+
+    def _load_marker_style(self, symbol):
+        """Point symbols hold the marker directly, no marker-line wrapper to scan for."""
+        marker = symbol.symbolLayer(0)
+        if not isinstance(marker, QgsSimpleMarkerSymbolLayer):
+            return
+        index = self.vertex_shape_combo.findData(
+            _SHAPE_BY_ENUM.get(marker.shape()))
+        if index >= 0:
+            self.vertex_shape_combo.setCurrentIndex(index)
+        self.vertex_color_btn.setColor(marker.color())
 
     def _load_vertex_style(self, symbol):
         for i in range(symbol.symbolLayerCount()):
@@ -856,7 +886,9 @@ class StyleDialog(BaseDialog):
                 "enabled": self.vertex_group.isChecked(),
                 "shape": self.vertex_shape_combo.currentData() or "circle",
                 "color": _rgba(self.vertex_color_btn.color()),
-                "size": 2.0,
+                # the width spin doubles as the marker size for point layers, matching what read-back put there
+                "size": (self.line_width_spin.value() if geometry == "point"
+                         else 2.0),
             },
             "labels": labels,
         }

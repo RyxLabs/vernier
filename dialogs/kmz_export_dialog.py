@@ -33,7 +33,7 @@ FLD_SUFFIX = 2
 FLD_EXAMPLE = 3
 FLD_DATA = 4
 
-# parks a row's label tick while the checkbox indicator is hidden
+# holds a row's label tick while the checkbox indicator is hidden
 _LABEL_TICK_ROLE = Qt.ItemDataRole.UserRole + 1
 
 _GEOM_ICONS = {
@@ -117,17 +117,15 @@ class KmzExportDialog(BaseDialog):
             "Label the placemarks with what QGIS shows on the canvas.\n"
             "Bare text colors carry over; a label with a buffer keeps the\n"
             "viewer's default white, since KML has no text halo.\n"
-            "Untick to pick label fields below."))
+            "Untick to pick label fields below.\n"
+            "Available when the layer has simple QGIS labeling turned on."))
         self.qgis_labels_chk.toggled.connect(self._on_qgis_labels_toggled)
         fields_layout.addWidget(self.qgis_labels_chk)
 
-        hint = QLabel(self.tr(
-            "Field ticks build the placemark label, Data ticks pick the "
-            "columns shown in the Google Earth balloon. Prefix, suffix and "
-            "the example are editable in place."))
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: #707070; font-style: italic;")
-        fields_layout.addWidget(hint)
+        self.fields_hint = QLabel()
+        self.fields_hint.setWordWrap(True)
+        self.fields_hint.setStyleSheet("color: #707070; font-style: italic;")
+        fields_layout.addWidget(self.fields_hint)
 
         self.field_tree = QTreeWidget()
         self.field_tree.setHeaderLabels([
@@ -228,7 +226,7 @@ class KmzExportDialog(BaseDialog):
             self.table.setCurrentCell(active_row, COL_NAME)
 
     def _adjust_table_height(self):
-        """Cap the table to its visible rows, up to 6, plus header - it otherwise claims ~200px no matter how few rows and squeezes the field tree."""
+        """Cap the table to its visible rows, up to 6, plus header - it otherwise claims ~200px no matter how few rows and leaves too little height for the field tree."""
         rows = self.table.rowCount()
         header_h = self.table.horizontalHeader().height() or 28
         if rows == 0:
@@ -292,6 +290,7 @@ class KmzExportDialog(BaseDialog):
     def _reset_current_color(self):
         row = self.table.currentRow()
         if row < 0:
+            self.show_tool_notice(self.tr("Click a layer row first."))
             return
         item = self.table.item(row, COL_COLOR)
         if item is None:
@@ -327,9 +326,19 @@ class KmzExportDialog(BaseDialog):
         self.btn_lbl_all.setEnabled(not checked)
         self.btn_lbl_none.setEnabled(not checked)
         self._set_label_ticks_visible(not checked)
+        # the hint has to describe the controls actually on screen
+        if checked:
+            self.fields_hint.setText(self.tr(
+                "Labels come from the layer's QGIS labeling. Data ticks "
+                "pick the columns shown in the Google Earth balloon."))
+        else:
+            self.fields_hint.setText(self.tr(
+                "Field ticks build the placemark label, Data ticks pick the "
+                "columns shown in the Google Earth balloon. Prefix, suffix "
+                "and the example are editable in place."))
 
     def _set_label_ticks_visible(self, visible):
-        """Show or hide the label check boxes themselves - a tickable box under a mode that ignores it reads as broken. Hidden ticks park in _LABEL_TICK_ROLE and come back on show."""
+        """Show or hide the label check boxes themselves - a tickable box under a mode that ignores it looks like a defect. Hidden tick states are stored in _LABEL_TICK_ROLE and restored on show."""
         self.field_tree.blockSignals(True)
         for i in range(self.field_tree.topLevelItemCount()):
             item = self.field_tree.topLevelItem(i)
@@ -428,7 +437,7 @@ class KmzExportDialog(BaseDialog):
         self._layer_configs[layer_id] = {
             "fields": fields,
             "data_fields": data_fields,
-            # a disabled box is no choice - store None so labeling turned on later still activates the default
+            # a disabled box records no decision - store None so labeling turned on later still gets the default
             "qgis_labels": (self.qgis_labels_chk.isChecked()
                             if self.qgis_labels_chk.isEnabled() else None),
         }
@@ -502,7 +511,7 @@ class KmzExportDialog(BaseDialog):
             total_features = 0
             for idx, (layer, config, color) in enumerate(selection):
                 if config is None:
-                    # a layer exported without ever opening its field panel ships every column, labeled the way its canvas is
+                    # a layer exported without ever opening its field panel exports every column, with its QGIS labels when it has them
                     data_fields = [f.name() for f in layer.fields()]
                     qgis_labels = self._has_qgis_labels(layer)
                 else:

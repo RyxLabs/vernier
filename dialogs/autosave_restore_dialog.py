@@ -77,11 +77,11 @@ class AutosaveRestoreDialog(BaseDialog):
         self._lbl_folder = QLabel()
         self._lbl_folder.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         folder_row.addWidget(self._lbl_folder, 1)
-        btn_open_folder = QPushButton(self.tr("Open folder"))
-        btn_open_folder.setToolTip(
+        self._btn_open_folder = QPushButton(self.tr("Open folder"))
+        self._btn_open_folder.setToolTip(
             self.tr("Open the backup folder in the file manager"))
-        btn_open_folder.clicked.connect(self._open_folder)
-        folder_row.addWidget(btn_open_folder)
+        self._btn_open_folder.clicked.connect(self._open_folder)
+        folder_row.addWidget(self._btn_open_folder)
         layout.addLayout(folder_row)
 
         btn_row = QHBoxLayout()
@@ -106,11 +106,13 @@ class AutosaveRestoreDialog(BaseDialog):
         root_dir = self._service.resolve_backup_dir()
         if not root_dir:
             self._lbl_folder.setText(self.tr("(no folder configured)"))
+            self._btn_open_folder.setEnabled(False)
             self._show_empty_message(self.tr("No backup folder configured."))
             return
 
         backup_dir = self._service.project_backup_dir(root_dir)
         self._lbl_folder.setText(backup_dir)
+        self._btn_open_folder.setEnabled(os.path.isdir(backup_dir))
 
         if not os.path.isdir(backup_dir):
             self._show_empty_message(self.tr(

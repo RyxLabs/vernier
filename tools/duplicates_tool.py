@@ -67,6 +67,9 @@ def run(iface):
     finally:
         dialog.close()
     if canceled:
+        iface.messageBar().pushMessage(
+            title, _tr("Duplicate scan canceled."),
+            level=Qgis.MessageLevel.Info, duration=5)
         return
 
     if not groups:

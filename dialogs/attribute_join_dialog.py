@@ -73,6 +73,7 @@ class AttributeJoinDialog(BaseDialog):
         sources_layout.addLayout(column_buttons)
         sources_group.setLayout(sources_layout)
         layout.addWidget(sources_group)
+        self.sources_group = sources_group
 
         target_group = QGroupBox(
             self.tr("Target layer (where the values go)"))
@@ -85,6 +86,7 @@ class AttributeJoinDialog(BaseDialog):
         target_form.addRow(self.tr("Key field:"), self.target_key_combo)
         target_group.setLayout(target_form)
         layout.addWidget(target_group)
+        self.target_group = target_group
 
         output_group = QGroupBox(self.tr("Output"))
         output_layout = QVBoxLayout()
@@ -111,6 +113,7 @@ class AttributeJoinDialog(BaseDialog):
         output_layout.addWidget(self.scratch_check)
         output_group.setLayout(output_layout)
         layout.addWidget(output_group)
+        self.output_group = output_group
 
         self.progress_bar = self.create_progress_bar()
         layout.addWidget(self.progress_bar)
@@ -318,6 +321,10 @@ class AttributeJoinDialog(BaseDialog):
     def _set_busy(self, busy):
         for button in (self.preview_btn, self.run_btn, self.close_btn):
             button.setEnabled(not busy)
+        # the run pumps events but works on a snapshot of these inputs - left enabled, they could still be changed mid-run with no effect
+        for group in (self.sources_group, self.target_group,
+                      self.output_group):
+            group.setEnabled(not busy)
         self.run_btn.setText(
             self.tr("Working...") if busy else self.tr("Run join"))
 
@@ -345,6 +352,8 @@ class AttributeJoinDialog(BaseDialog):
         sources = self._get_sources()
         columns_by_source = self._columns_by_source()
         permanent = self.permanent_check.isChecked()
+        # read together with the rest of the inputs - the loop below pumps events, and a box read afterwards would honor mid-run clicks the others ignore
+        wants_scratch = self.scratch_check.isChecked()
 
         source_data = {}
         for source, source_key in sources:
@@ -391,7 +400,7 @@ class AttributeJoinDialog(BaseDialog):
             QApplication.processEvents()
 
         scratch = None
-        if self.scratch_check.isChecked():
+        if wants_scratch:
             self.status_label.setText(self.tr("Building the scratch layer..."))
             QApplication.processEvents()
             try:

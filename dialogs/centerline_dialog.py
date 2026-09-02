@@ -122,6 +122,9 @@ class CenterlineDialog(BaseDialog):
         self.smooth_iter_spin.setToolTip(self.tr(
             "Number of smoothing passes.\n"
             "1–2 light, 3–4 moderate, 5+ very smooth"))
+        # the service ignores the passes unless smoothing is on, so the spin follows the checkbox
+        self.smooth_iter_spin.setEnabled(False)
+        self.smooth_check.toggled.connect(self.smooth_iter_spin.setEnabled)
         adv_form.addRow(self.tr("Smoothing passes:"), self.smooth_iter_spin)
 
         self.trunk_check = QCheckBox(self.tr("Main trunk only"))

@@ -22,7 +22,7 @@ from qgis.core import (  # type: ignore
     Qgis, QgsCsException, QgsFillSymbol,
     QgsMarkerLineSymbolLayer, QgsMarkerSymbol, QgsProject, QgsRasterLayer,
     QgsSimpleMarkerSymbolLayer, QgsSingleSymbolRenderer,
-    QgsVectorLayer,
+    QgsVectorLayer, QgsWkbTypes,
 )
 from qgis.gui import QgsMapTool  # type: ignore
 
@@ -255,7 +255,7 @@ def _apply_cad_style(layer):
 # --- widgets ---
 
 def _takes_text_input(widget):
-    """True when the focused widget eats typed characters itself. Every branch of the global filter goes through here so the Delete, Escape and typing redirects can't drift apart."""
+    """True when the focused widget consumes typed characters itself. Every branch of the global filter goes through here so the Delete, Escape and typing redirects can't drift apart."""
     if widget is None:
         return False
     if isinstance(widget, QComboBox):
@@ -430,6 +430,8 @@ class StatusStrip(QWidget):
         """Toggle editing through the QGIS action, which asks save/discard/cancel - a direct commitChanges() would bake in experimental edits and throw away the undo stack."""
         layer = self._iface.activeLayer()
         if not layer or not isinstance(layer, QgsVectorLayer):
+            # the label is styled clickable, so a click that does nothing needs a visible message
+            self._command_bar.log(_tr("! No active vector layer"))
             return
         action = self._iface.actionToggleEditing()
         if action is None:
@@ -928,7 +930,7 @@ class CommandBar(QDockWidget):
         if not canvas:
             return
 
-        # QPointF because the Qt6 QMouseEvent constructor wants a float position, and Qt5 takes one happily
+        # QPointF because the Qt6 QMouseEvent constructor wants a float position, and Qt5 accepts one as well
         center = QPointF(canvas.width() / 2, canvas.height() / 2)
 
         press = QMouseEvent(
@@ -1091,6 +1093,9 @@ class CommandBar(QDockWidget):
         if not layer.isEditable():
             self.log(_tr("! The layer is not in edit mode"))
             return
+        if not layer.undoStack().canRedo():
+            self.log(_tr("! Nothing to redo"))
+            return
         layer.undoStack().redo()
         self.log(_tr("Redo > operation restored"))
 
@@ -1141,6 +1146,10 @@ class CommandBar(QDockWidget):
         layer = self._iface.activeLayer()
         if not layer or not isinstance(layer, QgsVectorLayer):
             self.log(_tr("! No active layer"))
+            return
+        # lines and points would print "Area: 0.00 m²" as if it had been measured
+        if layer.geometryType() != QgsWkbTypes.GeometryType.PolygonGeometry:
+            self.log(_tr("! Not a polygon layer"))
             return
         features = layer.selectedFeatures()
         if not features:
